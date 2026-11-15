@@ -54,6 +54,7 @@ itu sendiri), bukan angka mutlaknya.
 | `sesar.geojson` | 17 segmen zona subduksi | Bird (2003), PB2002, lewat [fraxen/tectonicplates](https://github.com/fraxen/tectonicplates) | ODC PDDL | Hanya batas bertipe subduksi |
 | `gempa_historis.json` | 1.829 gempa M6+ sejak 1900 | Katalog USGS (ComCat) | Domain publik | lon, lat, kedalaman, magnitudo, tahun, tempat |
 | `karhutla2019.dat` | 74.025 deteksi api 1 Jul - 30 Nov 2019, 6 byte per titik | NASA FIRMS, arsip MODIS C6.1 per negara | Bebas dipakai, atribusi FIRMS | Hanya tipe 0 (api vegetasi) dengan keyakinan ≥ 30 % |
+| `data/karhutla_2019_harian.csv` | Jumlah titik panas dan total FRP per hari, 153 baris | Ringkasan dari berkas di atas | sama | Berguna untuk grafik di luar aplikasi |
 | `provinsi.geojson` | Batas 38 provinsi (disederhanakan) | [Indonesia GeoJSON & TopoJSON Maps (38 Provinces)](https://github.com/denyherianto/indonesia-geojson-topojson-maps-with-38-provinces) oleh Deny Herianto | CC BY 4.0 | Koordinat 4 desimal. Dipakai untuk membuang titik panas di laut dan meringkas per provinsi |
 | `gunung.json` | 69 gunung api: nama, koordinat, ketinggian | Smithsonian Global Volcanism Program | Bebas dipakai dengan atribusi | Dari `data/gunung_api.csv` |
 | `kota.json` | 418 kota: 98 kota utama + ibu kota kabupaten | Kurasi sendiri (`data/kota.csv`) dan Wikipedia/Wikidata (`data/ibukota_kabupaten.csv`) | CC BY-SA untuk bagian Wikipedia | Kota berimpit digabung. Koordinat pusat kota, 2-4 desimal |

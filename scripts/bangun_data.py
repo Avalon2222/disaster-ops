@@ -245,6 +245,14 @@ def bangun_karhutla_2019() -> dict:
     rek.sort(key=lambda b: b[4])
     (KELUAR / "karhutla2019.dat").write_bytes(b"".join(rek))
     print(f"  -> public/data/karhutla2019.dat {len(rek)} titik ({len(buf) / 1024:.0f} KB), puncak {max(per_hari)} titik/hari")
+    # ringkasan harian sebagai CSV biasa, supaya bisa dipakai di luar aplikasi ini
+    from datetime import timedelta
+
+    with open(AKAR / "data" / "karhutla_2019_harian.csv", "w", encoding="utf-8", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["tanggal", "titik_panas", "frp_total_mw"])
+        for h in range(n_hari):
+            w.writerow([(mulai + timedelta(days=h)).isoformat(), per_hari[h], round(frp_hari[h])])
     return {"mulai": mulai.isoformat(), "hari": n_hari, "jumlah": len(rek), "per_hari": per_hari, "frp_hari": [round(x) for x in frp_hari]}
 
 
