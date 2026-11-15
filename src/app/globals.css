@@ -1,0 +1,459 @@
+@import "tailwindcss";
+@import "maplibre-gl/dist/maplibre-gl.css";
+
+:root {
+  --bg: #05080f;
+  --panel: rgba(7, 11, 20, 0.72);
+  --panel-solid: #0a0f1c;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --text: #e5e7eb;
+  --muted: #8b95a7;
+  --dim: #5b6475;
+  --accent: #ff5d2e;
+  --accent-soft: rgba(255, 93, 46, 0.18);
+  --gold: #ffc857;
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  --bahaya: #ef4444;
+  --info: #38bdf8;
+  --font-mono: var(--font-jetbrains), "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-accent: var(--accent);
+  --color-gold: var(--gold);
+  --color-muted: var(--muted);
+  --color-dim: var(--dim);
+  --color-text: var(--text);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bahaya: var(--bahaya);
+  --color-info: var(--info);
+  --font-mono: var(--font-mono);
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button {
+  cursor: pointer;
+  font-family: inherit;
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+@layer components {
+/* panel kaca */
+.glass {
+  background: var(--panel);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* panel hampir padat: untuk menu dan lembar di HP, teks peta di belakangnya tidak tembus */
+.glass-padat {
+  background: rgba(7, 11, 20, 0.94);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* sudut braket ala HUD */
+.braket {
+  position: relative;
+}
+.braket::before,
+.braket::after {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-color: var(--accent);
+  border-style: solid;
+  opacity: 0.8;
+  pointer-events: none;
+}
+.braket::before {
+  top: -1px;
+  left: -1px;
+  border-width: 1px 0 0 1px;
+}
+.braket::after {
+  bottom: -1px;
+  right: -1px;
+  border-width: 0 1px 1px 0;
+}
+
+.label-kecil {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.tombol-hud {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+  transition: color 120ms, border-color 120ms, background 120ms;
+}
+.tombol-hud:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.05);
+}
+.tombol-hud.aktif {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.tombol-ikon {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+  transition: color 120ms, border-color 120ms, background 120ms;
+}
+.tombol-ikon:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.06);
+}
+.tombol-ikon.aktif {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.kbd {
+  display: inline-block;
+  min-width: 20px;
+  padding: 1px 5px;
+  font-size: 10px;
+  text-align: center;
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* sorotan onboarding */
+.sorot-panduan {
+  position: relative;
+  z-index: 61 !important;
+  outline: 2px solid var(--gold);
+  outline-offset: 4px;
+  border-radius: 4px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55), 0 0 32px rgba(242, 198, 109, 0.5);
+  animation: sorot-kedip 1.6s ease-in-out infinite;
+}
+@keyframes sorot-kedip {
+  0%,
+  100% {
+    outline-color: var(--gold);
+  }
+  50% {
+    outline-color: var(--accent);
+  }
+}
+
+/* slider lini masa */
+.slider-waktu {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  background: linear-gradient(90deg, rgba(255, 93, 46, 0.7), rgba(255, 200, 87, 0.5));
+  outline: none;
+  cursor: pointer;
+}
+.slider-waktu::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--gold);
+  border: 2px solid #05080f;
+  box-shadow: 0 0 0 2px var(--gold);
+}
+.slider-waktu::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--gold);
+  border: 2px solid #05080f;
+  box-shadow: 0 0 0 2px var(--gold);
+}
+
+/* titik status berdenyut */
+.denyut {
+  position: relative;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--ok);
+}
+.denyut::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 999px;
+  border: 1px solid var(--ok);
+  animation: denyut 1.8s ease-out infinite;
+}
+@keyframes denyut {
+  0% {
+    transform: scale(0.6);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+}
+
+/* garis pindai halus di atas peta */
+.pindai {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.015) 0px, rgba(255, 255, 255, 0.015) 1px, transparent 1px, transparent 3px);
+  mix-blend-mode: overlay;
+}
+.vinyet {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.55) 100%);
+}
+
+@layer components {
+/* ticker */
+.ticker-jalur {
+  display: inline-block;
+  white-space: nowrap;
+  padding-left: 100%;
+  animation: ticker 60s linear infinite;
+}
+.ticker-jalur:hover {
+  animation-play-state: paused;
+}
+@keyframes ticker {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+/* boot */
+.kursor::after {
+  content: "▌";
+  animation: kedip 1s steps(1) infinite;
+  color: var(--accent);
+}
+@keyframes kedip {
+  50% {
+    opacity: 0;
+  }
+}
+.muncul {
+  animation: muncul 300ms ease-out both;
+}
+@keyframes muncul {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.geser-kanan {
+  animation: geser-kanan 260ms ease-out both;
+}
+@keyframes geser-kanan {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* scrollbar tipis */
+.gulir {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+.gulir::-webkit-scrollbar {
+  width: 6px;
+}
+.gulir::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+}
+
+/* maplibre */
+.maplibregl-ctrl-attrib {
+  font-family: var(--font-mono) !important;
+  font-size: 9px !important;
+  background: rgba(5, 8, 15, 0.6) !important;
+  color: var(--dim) !important;
+}
+.maplibregl-ctrl-attrib a {
+  color: var(--muted) !important;
+}
+.maplibregl-ctrl-bottom-right {
+  bottom: 32px;
+}
+.maplibregl-canvas:focus {
+  outline: none;
+}
+
+/* layar sentuh: area sentuh tombol minimal 44 px (pedoman jari Apple/Google) */
+@media (pointer: coarse) {
+  .tombol-ikon {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .tombol-hud {
+    min-height: 44px;
+  }
+  .sentuh {
+    min-height: 44px;
+  }
+  /* link atribusi peta: area sentuh diperbesar tanpa mengubah tata letak */
+  .maplibregl-ctrl-attrib a {
+    display: inline-block;
+    padding-block: 16px;
+    margin-block: -16px;
+  }
+  /* halaman boleh di-zoom ; kolom teks minimal 16 px supaya Safari iOS gak auto-zoom saat diketik */
+  input:not([type]),
+  input[type="text"],
+  input[type="search"],
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* panel modal di HP jadi lembar layar penuh yang padat (tanpa backdrop-filter bertumpuk, aman di Safari iOS) */
+@media (max-width: 640px) {
+  .lembar-hp {
+    width: 100%;
+    height: 100%;
+    max-height: none !important;
+    background: #0a0f1c;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* penanda tingkat ancaman: 0 aman .. 3 awas */
+.tingkat-0 {
+  color: var(--ok);
+}
+.tingkat-1 {
+  color: #fde047;
+}
+.tingkat-2 {
+  color: #fb923c;
+}
+.tingkat-3 {
+  color: var(--bahaya);
+}
+
+/* denyut merah untuk status AWAS */
+.denyut.awas {
+  background: var(--bahaya);
+}
+.denyut.awas::after {
+  border-color: var(--bahaya);
+}
+.denyut.siaga {
+  background: #fb923c;
+}
+.denyut.siaga::after {
+  border-color: #fb923c;
+}
+
+/* penanda gempa terbaru di peta */
+.pulsa-gempa {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 2px solid var(--gold);
+  box-shadow: 0 0 12px rgba(255, 200, 87, 0.7);
+  pointer-events: none;
+}
+.pulsa-gempa::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 999px;
+  border: 2px solid var(--gold);
+  animation: pulsa-gempa 1.8s ease-out infinite;
+}
+@keyframes pulsa-gempa {
+  0% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+/* animasi dimatikan untuk pengguna yang memintanya */
+@media (prefers-reduced-motion: reduce) {
+  .ticker-jalur,
+  .denyut::after,
+  .pulsa-gempa::after,
+  .sorot-panduan {
+    animation: none;
+  }
+}
