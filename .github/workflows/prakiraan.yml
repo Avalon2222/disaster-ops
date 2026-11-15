@@ -1,0 +1,29 @@
+name: Snapshot prakiraan
+
+# Membangun cuaca.json (angin, hujan, suhu, PM2.5, FWI 8 hari, debit sungai) dari Open-Meteo
+# dan menyimpannya ke cabang `data`. Browser membacanya langsung dari sana, jadi tidak perlu redeploy.
+on:
+  schedule:
+    - cron: "23 1,7,13,19 * * *"   # tiap 6 jam, tak lama setelah model cuaca global selesai dihitung
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cabang-data
+  cancel-in-progress: false
+
+jobs:
+  bangun:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsx scripts/bangun_cuaca.ts --keluar keluar/cuaca.json
+      - run: bash scripts/simpan_cabang_data.sh keluar/cuaca.json
