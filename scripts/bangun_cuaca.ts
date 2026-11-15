@@ -43,9 +43,11 @@ async function ambil<T>(url: string): Promise<T[]> {
       const data = (await res.json()) as T | T[];
       return Array.isArray(data) ? data : [data];
     } catch (e) {
-      console.warn(`  ulang ${percobaan + 1}: ${e instanceof Error ? e.message : e}`);
-      // batas laju Open-Meteo dihitung per menit: tunggu sedikit lebih lama tiap kali
-      await tidur(65_000 + percobaan * 20_000);
+      const pesan = e instanceof Error ? e.message : String(e);
+      console.warn(`  ulang ${percobaan + 1}: ${pesan}`);
+      // batas laju Open-Meteo dihitung per menit, jadi 429 perlu jeda panjang;
+      // koneksi yang putus (sering terjadi setelah jeda antar potongan) cukup diulang sebentar lagi
+      await tidur(/429/.test(pesan) ? 65_000 + percobaan * 20_000 : 4_000 + percobaan * 5_000);
     }
   }
   throw new Error(`Gagal mengambil ${new URL(url).host}`);
