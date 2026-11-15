@@ -23,6 +23,9 @@ if git fetch -q origin data 2>/dev/null; then
   git checkout -q FETCH_HEAD -- . 2>/dev/null || true
 fi
 echo "Cabang data: snapshot prakiraan (cuaca.json). Ditulis otomatis oleh GitHub Actions tiap 6 jam, riwayatnya tidak disimpan." > README.md
+# cabang ini cuma data: Vercel jangan mencoba mem-build-nya
+printf '{ "git": { "deploymentEnabled": false } }
+' > vercel.json
 for berkas in "$@"; do
   cp "../$berkas" "$(basename "$berkas")"
 done
