@@ -46,11 +46,11 @@ test.describe("server", () => {
     expect(robots.ok()).toBe(true);
     const teksRobots = await robots.text();
     expect(teksRobots).toContain("Allow: /");
-    expect(teksRobots).toContain("Sitemap: https://disaster-ops.vercel.app/sitemap.xml");
+    expect(teksRobots).toContain("Sitemap: https://disaster-ops-id.vercel.app/sitemap.xml");
 
     const sitemap = await request.get("/sitemap.xml");
     expect(sitemap.ok()).toBe(true);
-    expect(await sitemap.text()).toContain("<loc>https://disaster-ops.vercel.app</loc>");
+    expect(await sitemap.text()).toContain("<loc>https://disaster-ops-id.vercel.app</loc>");
 
     // h1 dan viewport harus ada tanpa JavaScript, karena konsolnya sendiri cuma dirender di browser
     const html = await (await request.get("/")).text();

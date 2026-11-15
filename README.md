@@ -12,7 +12,7 @@
 > simulasi waktu tiba tsunami, skenario "kalau M7 di sini", briefing harian otomatis, dan putar ulang karhutla 2019.
 > Semuanya live, semuanya dari data publik.
 
-**Live:** https://disaster-ops.vercel.app
+**Live:** https://disaster-ops-id.vercel.app
 
 ![Disaster Ops: titik panas, gempa, gunung api, dan partikel angin di atas Indonesia](docs/screenshots/hero.png)
 
