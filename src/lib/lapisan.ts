@@ -64,7 +64,7 @@ export const LAPISAN: DefLapisan[] = [
   { id: "banjir", tombol: "B", kode: "KeyB", grup: "prakiraan", jenis: "prakiraan", warna: "#38bdf8", medan: true, waktu: "hari", nama: { id: "Risiko banjir", en: "Flood risk" }, deskripsi: { id: "Dari prakiraan hujan 3 hari", en: "From 3-day rain forecast" } },
   { id: "sungai", tombol: "V", kode: "KeyV", grup: "prakiraan", jenis: "prakiraan", warna: "#2dd4bf", nama: { id: "Debit sungai", en: "River discharge" }, deskripsi: { id: "Prakiraan GloFAS, 22 sungai", en: "GloFAS forecast, 22 rivers" } },
 
-  { id: "sesar", tombol: "Z", kode: "KeyZ", grup: "bahaya", jenis: "statis", warna: "#f43f5e", nama: { id: "Sesar & megathrust", en: "Faults & megathrust" }, deskripsi: { id: "Plus gempa M6+ sejak 1900", en: "Plus M6+ quakes since 1900" } },
+  { id: "sesar", tombol: "Z", kode: "KeyZ", grup: "bahaya", jenis: "statis", warna: "#f43f5e", awal: true, nama: { id: "Sesar & megathrust", en: "Faults & megathrust" }, deskripsi: { id: "Plus gempa M6+ sejak 1900", en: "Plus M6+ quakes since 1900" } },
   { id: "inarisk", tombol: "X", kode: "KeyX", grup: "bahaya", jenis: "statis", warna: "#e879f9", medan: true, nama: { id: "Peta bahaya InaRISK", en: "InaRISK hazard maps" }, deskripsi: { id: "BNPB: gempa, tsunami, banjir, ...", en: "BNPB: quake, tsunami, flood, ..." } },
   { id: "penduduk", tombol: "N", kode: "KeyN", grup: "bahaya", jenis: "statis", warna: "#fde68a", medan: true, nama: { id: "Kepadatan penduduk", en: "Population density" }, deskripsi: { id: "WorldPop 2020, sel 5 km", en: "WorldPop 2020, 5 km cells" } },
   { id: "rs", tombol: "H", kode: "KeyH", grup: "bahaya", jenis: "statis", warna: "#34d399", nama: { id: "Rumah sakit", en: "Hospitals" }, deskripsi: { id: "OpenStreetMap", en: "OpenStreetMap" } },

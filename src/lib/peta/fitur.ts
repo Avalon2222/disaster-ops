@@ -20,7 +20,7 @@ export type Pilihan =
   | { jenis: "sungai"; id: string; lon: number; lat: number; data: PrakiraanSungai; status: StatusSungai }
   | { jenis: "historis"; id: string; lon: number; lat: number; data: GempaHistoris }
   | { jenis: "rs"; id: string; lon: number; lat: number; nama: string }
-  | { jenis: "sesar"; id: string; lon: number; lat: number; nama: string; gerak: string; laju: number | null; megathrust: boolean }
+  | { jenis: "sesar"; id: string; lon: number; lat: number; nama: string; gerak: string; laju: number | null; megathrust: boolean; idFitur: number }
   | { jenis: "titik"; id: string; lon: number; lat: number };
 
 export function fiturHotspot(d: DataHotspot, sekarang: number): Fitur[] {
@@ -37,11 +37,14 @@ export function fiturGunung(gunung: GunungApi[]): Fitur[] {
 }
 
 export function fiturBencana(b: KejadianBnpb[]): Fitur[] {
-  return b.map((x) => titik(x.lon, x.lat, { id: x.id, warna: WARNA_JENIS_BENCANA[kunciJenisBencana(x.jenis)], label: x.jenis }));
+  return b.map((x) => {
+    const kunci = kunciJenisBencana(x.jenis);
+    return titik(x.lon, x.lat, { id: x.id, kunci, warna: WARNA_JENIS_BENCANA[kunci], label: x.jenis });
+  });
 }
 
 export function fiturLaporan(l: LaporanWarga[]): Fitur[] {
-  return l.map((x) => titik(x.lon, x.lat, { id: x.id, warna: WARNA_JENIS_BENCANA[kunciJenisBencana(x.jenis)] }));
+  return l.map((x) => titik(x.lon, x.lat, { id: x.id, kunci: kunciJenisBencana(x.jenis) }));
 }
 
 export function fiturPeringatan(p: Peringatan[]): Fitur[] {

@@ -28,23 +28,28 @@ export const SKALA: Record<"hujan" | "suhu" | "udara" | "fwi" | "banjir" | "pend
   suhu: {
     satuan: "°C",
     label: [18, 22, 26, 30, 34],
+    // suhu ada di mana-mana, jadi yang "biasa" (laut tropis 26-29 °C) nyaris bening: yang diwarnai
+    // hanya yang menyimpang, sejuk di dataran tinggi dan panas di darat siang hari
     henti: [
-      [14, 59, 130, 246, 150],
-      [20, 34, 211, 238, 150],
-      [24, 74, 222, 128, 150],
-      [28, 250, 204, 21, 160],
-      [32, 249, 115, 22, 175],
-      [36, 239, 68, 68, 190],
+      [14, 56, 189, 248, 165],
+      [20, 45, 212, 191, 125],
+      [24, 74, 222, 128, 60],
+      [26.5, 250, 204, 21, 14],
+      [29, 251, 146, 60, 22],
+      [31, 251, 146, 60, 100],
+      [33, 239, 68, 68, 150],
+      [37, 190, 24, 93, 180],
     ],
   },
   udara: {
     satuan: "µg/m³ PM2.5",
     label: [15, 35, 55, 150, 250],
+    // udara bersih (di bawah ~12) tidak diwarnai sama sekali: yang tampil hanya tempat yang kotor
     henti: [
-      [0, 74, 222, 128, 0],
-      [8, 74, 222, 128, 50],
-      [15, 163, 230, 53, 120],
-      [35, 250, 204, 21, 160],
+      [0, 163, 230, 53, 0],
+      [10, 163, 230, 53, 0],
+      [15, 190, 210, 60, 70],
+      [35, 250, 204, 21, 150],
       [55, 249, 115, 22, 185],
       [150, 239, 68, 68, 205],
       [250, 168, 85, 247, 220],
@@ -53,10 +58,11 @@ export const SKALA: Record<"hujan" | "suhu" | "udara" | "fwi" | "banjir" | "pend
   fwi: {
     satuan: "FWI",
     label: [1, 6, 13, 25],
+    // kelas rendah cukup jadi rona tipis, supaya yang menyala hanya tempat yang memang berisiko
     henti: [
-      [0, 74, 222, 128, 70],
-      [1, 74, 222, 128, 110],
-      [3.5, 250, 204, 21, 160],
+      [0, 74, 222, 128, 34],
+      [1, 74, 222, 128, 62],
+      [3.5, 250, 204, 21, 150],
       [6, 251, 146, 60, 185],
       [13, 239, 68, 68, 210],
       [25, 190, 24, 93, 225],

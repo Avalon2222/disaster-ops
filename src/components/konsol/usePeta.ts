@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { Map as MapLibre, setWorkerUrl, type MapMouseEvent } from "maplibre-gl";
-import { KanvasAngin } from "@/lib/peta/angin";
+import { KanvasEfek } from "@/lib/peta/efek";
 import { bangunStyle, ID_LAYER_SAT, layerBasemapTersembunyiSaatSat } from "@/lib/peta/mapStyle";
-import { LAYER_INTERAKTIF, pasangSemuaLapisan, type KanvasMedan } from "@/lib/peta/pasang";
+import { pasangSemuaLapisan } from "@/lib/peta/pasang";
 import type { Tampilan } from "@/lib/urlState";
 import { workerPetaSekali } from "@/lib/workerPeta";
 
@@ -14,6 +14,9 @@ export const TOLERANSI_KLIK = { mouse: 6, sentuh: 14 };
 export interface PenanganPeta {
   saatKlik(m: MapLibre, e: MapMouseEvent): void;
   saatMoveEnd(m: MapLibre): void;
+  /** kursor bergerak di atas peta: kembalikan true kalau ada objek di bawahnya (kursor jadi tangan) */
+  saatHover(m: MapLibre, e: MapMouseEvent): boolean;
+  saatKeluar(): void;
 }
 
 interface Opsi {
@@ -25,14 +28,14 @@ interface Opsi {
 
 /**
  * Membuat peta MapLibre (globe) sekali, memasang semua layer dan kanvas, lalu meneruskan event ke konsol.
- * `map` dan `kanvas` baru terisi setelah style dan layer siap, jadi efek di konsol cukup bergantung padanya.
+ * `map` dan `kanvasTsunami` baru terisi setelah style dan layer siap, jadi efek di konsol cukup bergantung padanya.
  */
 export function usePeta({ tampilan, satAwal, datarAwal, penanganRef }: Opsi) {
   const wadahRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<MapLibre | null>(null);
   const [online, setOnline] = useState(true);
-  const [kanvas, setKanvas] = useState<KanvasMedan | null>(null);
-  const anginRef = useRef<KanvasAngin | null>(null);
+  const [kanvasTsunami, setKanvasTsunami] = useState<HTMLCanvasElement | null>(null);
+  const efekRef = useRef<KanvasEfek | null>(null);
   const layerSat = useRef<string[]>([]);
   const awal = useRef({ tampilan, satAwal, datarAwal });
 
@@ -96,36 +99,24 @@ export function usePeta({ tampilan, satAwal, datarAwal, penanganRef }: Opsi) {
       // cukup menunggu style, bukan semua ubin: lapisan data langsung tampil walau peta dasar masih mengunduh
       m.once("style.load", () => {
         if (dibatalkan) return;
-        const buat = () => {
-          const k = document.createElement("canvas");
-          k.width = 2;
-          k.height = 2;
-          return k;
-        };
-        const kanvasBaru = { darat: buat(), atas: buat(), tsunami: buat() };
-        pasangSemuaLapisan(m, style, kanvasBaru);
-        setKanvas(kanvasBaru);
+        const tsunami = document.createElement("canvas");
+        tsunami.width = 2;
+        tsunami.height = 2;
+        pasangSemuaLapisan(m, style, tsunami);
+        setKanvasTsunami(tsunami);
         if (awal.current.satAwal) terapkanSat(m, true);
         if (awal.current.datarAwal) m.setProjection({ type: "mercator" });
         const induk = wadahRef.current?.parentElement;
-        if (induk) anginRef.current = new KanvasAngin(m, induk, window.matchMedia("(max-width: 640px), (pointer: coarse)").matches);
+        if (induk) efekRef.current = new KanvasEfek(m, induk, window.matchMedia("(max-width: 640px), (pointer: coarse)").matches);
         setMap(m);
       });
       m.on("moveend", () => penanganRef.current.saatMoveEnd(m));
       m.on("click", (e: MapMouseEvent) => penanganRef.current.saatKlik(m, e));
       m.on("mousemove", (e: MapMouseEvent) => {
-        const ids = Object.keys(LAYER_INTERAKTIF).filter((id) => m.getLayer(id));
-        const r = TOLERANSI_KLIK.mouse;
-        const ada =
-          m.queryRenderedFeatures(
-            [
-              [e.point.x - r, e.point.y - r],
-              [e.point.x + r, e.point.y + r],
-            ],
-            { layers: ids },
-          ).length > 0;
-        m.getCanvas().style.cursor = ada ? "pointer" : "";
+        m.getCanvas().style.cursor = penanganRef.current.saatHover(m, e) ? "pointer" : "";
       });
+      m.on("mouseout", () => penanganRef.current.saatKeluar());
+      m.on("movestart", () => penanganRef.current.saatKeluar());
       m.on("error", (e) => {
         const pesan = String((e as { error?: { message?: string } }).error?.message ?? "");
         if (/tiles\.openfreemap|fonts/.test(pesan)) setOnline(false);
@@ -133,15 +124,15 @@ export function usePeta({ tampilan, satAwal, datarAwal, penanganRef }: Opsi) {
     })();
     return () => {
       dibatalkan = true;
-      anginRef.current?.hancurkan();
-      anginRef.current = null;
+      efekRef.current?.hancurkan();
+      efekRef.current = null;
       peta?.remove();
       setMap(null);
-      setKanvas(null);
+      setKanvasTsunami(null);
     };
   }, [penanganRef, terapkanSat]);
 
-  return { wadahRef, map, online, kanvas, anginRef, terapkanSat };
+  return { wadahRef, map, online, kanvasTsunami, efekRef, terapkanSat };
 }
 
 /** true di layar sempit (ponsel): panel samping jadi lembar bawah dan menutupi lini masa. */

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Map as MapLibre, RasterTileSource } from "maplibre-gl";
 import { Pause, Play, Satellite, X } from "lucide-react";
 import { terjemah, type Kunci, type Lang } from "@/lib/i18n";
-import { setData, setTerlihat, titik, urlCitra } from "@/lib/peta/pasang";
+import { pudarkanRaster, setData, setTerlihat, titik, urlCitra } from "@/lib/peta/pasang";
 import { TONGGAK_2019 } from "@/lib/skenario";
 import { muatKarhutla2019, type Karhutla2019 } from "@/lib/statis";
 import { formatTanggalIso, tambahHari } from "@/lib/waktu";
@@ -82,7 +82,7 @@ export default function Replay2019({ lang, map, onTutup }: Props) {
     if (!map) return;
     const s = map.getSource("citra") as RasterTileSource | undefined;
     if (citra && !main) s?.setTiles([urlCitra(tanggal)]);
-    setTerlihat(map, "citra-raster", citra);
+    pudarkanRaster(map, "citra-raster", citra);
   }, [map, citra, main, tanggal]);
 
   const tonggak = useMemo(() => [...TONGGAK_2019].reverse().find((x) => x.tanggal <= tanggal) ?? TONGGAK_2019[0], [tanggal]);

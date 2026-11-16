@@ -102,6 +102,8 @@ const KAMUS = {
   hotspot_range: { id: "Rentang titik panas", en: "Hotspot window" },
   range_24h: { id: "24 jam", en: "24 h" },
   range_7d: { id: "7 hari", en: "7 days" },
+  loading: { id: "memuat…", en: "loading…" },
+  hazard_mid: { id: "Sedang", en: "Medium" },
   inarisk_pick: { id: "Jenis peta bahaya InaRISK", en: "InaRISK hazard type" },
   forecast_made: { id: "prakiraan dibuat", en: "forecast built" },
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Marker, type Map as MapLibre, type MapMouseEvent, type RasterTileSource } from "maplibre-gl";
+import type { Map as MapLibre, MapMouseEvent, PointLike, RasterTileSource } from "maplibre-gl";
 import AlatGempa, { DALAM_AWAL, MAG_AWAL, type SkenarioGempa } from "./AlatGempa";
 import AlatTsunami, { MAG_TSUNAMI_AWAL } from "./AlatTsunami";
 import Bantuan from "./Bantuan";
@@ -25,8 +25,9 @@ import { NAMA_TINGKAT, statusSungai } from "@/lib/model/banjir";
 import { prakiraanPerProvinsi, provinsiPerSel } from "@/lib/model/prakiraan";
 import { susunSitrep } from "@/lib/model/sitrep";
 import { fiturBencana, fiturGempa, fiturGunung, fiturHistoris, fiturHotspot, fiturLaporan, fiturPeringatan, fiturRs, fiturSungai, pusatPoligon, type Pilihan } from "@/lib/peta/fitur";
-import { gambarMedan, kosongkan, segarkanKanvas } from "@/lib/peta/medan";
-import { LAYER_INTERAKTIF, setData, sinkronVisibilitas, titik, urlCitra, urlInarisk } from "@/lib/peta/pasang";
+import { gambarMedan, pasangGambar } from "@/lib/peta/medan";
+import { animasiArus, LAYER_INTERAKTIF, pudarkanRaster, setData, sinkronVisibilitas, sorotGaris, SUDUT_INARISK, titik, urlCitra, urlInarisk } from "@/lib/peta/pasang";
+import { hujanTerbasah, labelMedan, ringkasPilihan } from "@/lib/peta/ringkas";
 import { SKALA } from "@/lib/peta/warna";
 import { muatGunungStatis, muatHistoris, muatKota, muatPenduduk, muatProvinsi, muatRs, type GempaHistoris, type Kota } from "@/lib/statis";
 import { ringkasPerProvinsi } from "@/lib/sumber/firms";
@@ -34,7 +35,7 @@ import { bacaUrl, tampilanAwal, tulisUrl } from "@/lib/urlState";
 import { formatHariWib, formatWib, tanggalWib, umur } from "@/lib/waktu";
 
 const KUNCI_BAHASA = "dops-bahasa";
-const URUTAN_KLIK = ["gempa-titik", "gunung-ikon", "bencana-titik", "laporan-titik", "sungai-titik", "hotspot-titik", "rs-titik", "replay-titik", "historis-titik", "megathrust-garis", "sesar-garis", "peringatan-isi"];
+const URUTAN_KLIK = ["gempa-titik", "gunung-ikon", "bencana-ikon", "laporan-ikon", "sungai-ikon", "hotspot-titik", "rs-ikon", "rs-titik", "replay-titik", "historis-titik", "sesar-kena", "peringatan-isi"];
 /** lapisan yang tetap tampil saat alat skenario gempa/tsunami terbuka */
 const LAPISAN_SAAT_ALAT: IdLapisan[] = ["sesar", "inarisk", "penduduk", "rs"];
 /** lapisan yang bergantung pada tiap sumber, untuk menandai "sumber sedang mati" di rel */
@@ -90,9 +91,10 @@ export default function Console() {
   const historisRef = useRef<GempaHistoris[]>([]);
 
   // --- peta ---
-  const penanganRef = useRef<PenanganPeta>({ saatKlik: () => undefined, saatMoveEnd: () => undefined });
+  const penanganRef = useRef<PenanganPeta>({ saatKlik: () => undefined, saatMoveEnd: () => undefined, saatHover: () => false, saatKeluar: () => undefined });
+  const tipRef = useRef<HTMLDivElement>(null);
   const tampilan = useMemo(() => awal.tampilan ?? tampilanAwal(), [awal]);
-  const { wadahRef, map, online, kanvas, anginRef, terapkanSat } = usePeta({ tampilan, satAwal: Boolean(awal.sat), datarAwal: Boolean(awal.datar), penanganRef });
+  const { wadahRef, map, online, kanvasTsunami, efekRef, terapkanSat } = usePeta({ tampilan, satAwal: Boolean(awal.sat), datarAwal: Boolean(awal.datar), penanganRef });
 
   // jam berjalan (untuk umur data dan posisi "sekarang" di lini masa)
   useEffect(() => {
@@ -238,8 +240,6 @@ export default function Console() {
   useEffect(() => {
     if (!map) return;
     sinkronVisibilitas(map, aktifEfektif);
-    const m = medanAktif(aktifEfektif);
-    if (m) segarkanKanvas(map, m === "fwi" || m === "banjir" || m === "penduduk" ? "medan-darat" : "medan-atas");
   }, [map, aktifEfektif]);
 
   // --- peta: data live ke source ---
@@ -297,10 +297,12 @@ export default function Console() {
   }, [map, rsAktif]);
 
   // --- peta: lapisan medan ---
+  // gambar dibuat di kanvas lepas lalu dipasang ke source `image`; nyala/matinya diurus opasitas layer (memudar)
   const medan = medanAktif(aktifEfektif);
+  const kanvasMedan = useRef<HTMLCanvasElement | null>(null);
   useEffect(() => {
-    const k = kanvas;
-    if (!map || !k) return;
+    if (!map || !medan || medan === "inarisk") return;
+    const k = (kanvasMedan.current ??= document.createElement("canvas"));
     let hidup = true;
     if (medan === "penduduk") {
       muatPenduduk()
@@ -310,60 +312,57 @@ export default function Console() {
           const luas = (g.dx * 111.195) ** 2;
           const nilai = new Float32Array(g.v.length);
           for (let i = 0; i < nilai.length; i++) nilai[i] = (g.v[i] / g.skalaAkar) ** 2;
-          const sudut = gambarMedan(k.darat, { grid: { ...g, dy: g.dx }, nilai, skala: SKALA.penduduk, perSel: 1, ubah: (v, lat) => v / (luas * Math.cos((lat * Math.PI) / 180)) });
-          segarkanKanvas(map, "medan-darat", sudut);
+          const sudut = gambarMedan(k, { grid: { ...g, dy: g.dx }, nilai, skala: SKALA.penduduk, perSel: 1, ubah: (v, lat) => v / (luas * Math.cos((lat * Math.PI) / 180)) });
+          pasangGambar(map, "medan-darat", k, sudut);
         })
         .catch(() => undefined);
     } else if (cuaca && (medan === "fwi" || medan === "banjir")) {
       const h = cuaca.harian;
-      let nilai: ArrayLike<number> = h.fwi[Math.min(h.fwi.length - 1, hari)];
-      if (medan === "banjir") {
-        // hari terbasah dalam jendela 3 hari mulai hari terpilih
-        const n = h.grid.nx * h.grid.ny;
-        const maks = new Float32Array(n).fill(-1);
-        for (let d = hari; d < Math.min(h.hujan.length, hari + 3); d++) for (let s = 0; s < n; s++) if (h.hujan[d][s] > maks[s]) maks[s] = h.hujan[d][s];
-        nilai = maks;
-      }
-      const sudut = gambarMedan(k.darat, { grid: h.grid, nilai, skala: SKALA[medan], pengali: 0.1, kosong: -1, perSel: 10 });
-      segarkanKanvas(map, "medan-darat", sudut);
+      const nilai = medan === "banjir" ? hujanTerbasah(cuaca, hari) : h.fwi[Math.min(h.fwi.length - 1, hari)];
+      pasangGambar(map, "medan-darat", k, gambarMedan(k, { grid: h.grid, nilai, skala: SKALA[medan], pengali: 0.1, kosong: -1, perSel: 12, kabur: 5 }));
     } else if (cuaca && (medan === "hujan" || medan === "suhu" || medan === "udara")) {
       const m = cuaca.medan;
       const i = Math.min(m.u10.length - 1, jam);
       const nilai = medan === "hujan" ? m.hujan[i] : medan === "suhu" ? m.suhu[i] : m.pm25[i];
-      const sudut = gambarMedan(k.atas, { grid: m.grid, nilai, skala: SKALA[medan], pengali: medan === "udara" ? 1 : 0.1, perSel: 10 });
-      segarkanKanvas(map, "medan-atas", sudut);
-    } else {
-      kosongkan(k.darat);
-      kosongkan(k.atas);
+      pasangGambar(map, "medan-atas", k, gambarMedan(k, { grid: m.grid, nilai, skala: SKALA[medan], pengali: medan === "udara" ? 1 : 0.1, perSel: 12, kabur: 7, pudar: true }));
     }
     return () => {
       hidup = false;
     };
-  }, [map, kanvas, medan, cuaca, jam, hari]);
+  }, [map, medan, cuaca, jam, hari]);
 
-  // --- peta: partikel angin dan asap ---
+  // angka prakiraan di kota-kota utama
   useEffect(() => {
-    const a = anginRef.current;
-    if (!map || !a) return;
-    const hening = replay || alat === "tsunami" || alat === "gempa" || briefing;
+    if (map) setData(map, "medan-label", labelMedan(medan, cuaca, jam, hari, kota));
+  }, [map, medan, cuaca, jam, hari, kota]);
+
+  // --- peta: efek bergerak (angin, hujan, kabut, asap) ---
+  useEffect(() => {
+    const e = efekRef.current;
+    if (!map || !e) return;
     if (cuaca) {
       const m = cuaca.medan;
       // di mode harian angin memakai tengah hari yang dipilih (sejauh deret 72 jamnya ada)
       const i = mode === "hari" ? Math.min(m.u10.length - 1, langkahKini + (hari - hariKini) * 8) : Math.min(m.u10.length - 1, jam);
-      a.grid = m.grid;
-      a.u = m.u10[i];
-      a.v = m.v10[i];
-      a.medanAsap = medan850;
-      a.waktuAsap = m.mulai + i * m.langkahJam * 3600_000;
+      e.grid = m.grid;
+      e.u = m.u10[i];
+      e.v = m.v10[i];
+      e.hujan = m.hujan[i];
+      e.pm25 = m.pm25[i];
+      e.medanAsap = medan850;
+      e.waktuAsap = m.mulai + i * m.langkahJam * 3600_000;
     }
-    a.anginAktif = Boolean(cuaca) && aktifEfektif.has("angin") && !hening;
-    a.asapAktif = Boolean(cuaca) && aktifEfektif.has("asap") && !hening;
-    if (!a.anginAktif || !a.asapAktif) a.bersihkan();
-  }, [map, anginRef, cuaca, jam, hari, hariKini, langkahKini, mode, medan850, aktifEfektif, replay, alat, briefing]);
+    // alat skenario, putar ulang, dan briefing butuh peta yang tenang
+    e.jeda = replay || alat === "tsunami" || alat === "gempa" || briefing;
+    e.anginAktif = Boolean(cuaca) && aktifEfektif.has("angin");
+    e.hujanAktif = Boolean(cuaca) && aktifEfektif.has("hujan");
+    e.kabutAktif = Boolean(cuaca) && aktifEfektif.has("udara");
+    e.asapAktif = Boolean(cuaca) && aktifEfektif.has("asap");
+  }, [map, efekRef, cuaca, jam, hari, hariKini, langkahKini, mode, medan850, aktifEfektif, replay, alat, briefing]);
 
   useEffect(() => {
-    anginRef.current?.setGugus(gugus);
-  }, [map, anginRef, gugus]);
+    efekRef.current?.setGugus(gugus);
+  }, [map, efekRef, gugus]);
 
   useEffect(() => {
     if (!map) return;
@@ -377,34 +376,86 @@ export default function Console() {
   }, [map, lintasan]);
 
   // --- peta: raster pilihan ---
+  // peta bahaya InaRISK: satu gambar per jenis, baru diunduh waktu lapisannya dinyalakan
+  // gambarnya ditunggu sampai siap dulu, baru dipudarkan masuk; ganti jenis = pudar keluar, tukar, pudar masuk
+  const [inariskSiap, setInariskSiap] = useState<JenisInarisk | null>(null);
+  const inariskMuat = medan === "inarisk" && inariskSiap !== inarisk;
   useEffect(() => {
-    (map?.getSource("inarisk") as RasterTileSource | undefined)?.setTiles([urlInarisk(inarisk)]);
-  }, [map, inarisk]);
+    if (!map || medan !== "inarisk") return;
+    let hidup = true;
+    const url = urlInarisk(inarisk);
+    const mulai = performance.now();
+    pudarkanRaster(map, "inarisk-raster", false);
+    const gambar = new Image();
+    gambar.src = url;
+    let lepas = () => undefined as void;
+    const tampil = () => {
+      lepas();
+      if (!hidup) return;
+      pudarkanRaster(map, "inarisk-raster", true);
+      setInariskSiap(inarisk);
+    };
+    gambar
+      .decode()
+      .catch(() => undefined)
+      .then(() => {
+        // beri waktu pudar-keluar jenis sebelumnya selesai
+        window.setTimeout(
+          () => {
+            if (!hidup) return;
+            const saatData = (e: { sourceId?: string }) => {
+              if (e.sourceId === "inarisk") window.setTimeout(tampil, 60);
+            };
+            map.on("sourcedata", saatData);
+            const cadangan = window.setTimeout(tampil, 2500);
+            lepas = () => {
+              map.off("sourcedata", saatData);
+              window.clearTimeout(cadangan);
+              lepas = () => undefined;
+            };
+            pasangGambar(map, "inarisk", url, SUDUT_INARISK);
+          },
+          Math.max(0, 320 - (performance.now() - mulai)),
+        );
+      });
+    return () => {
+      hidup = false;
+      lepas();
+      setInariskSiap(null);
+    };
+  }, [map, medan, inarisk]);
   const tanggalCitra = tanggalWib(sekarang - 86_400_000);
   useEffect(() => {
     if (!replay) (map?.getSource("citra") as RasterTileSource | undefined)?.setTiles([urlCitra(tanggalCitra)]);
   }, [map, tanggalCitra, replay]);
 
-  // --- peta: sorotan objek terpilih dan denyut gempa terbaru ---
+  // --- peta: sorotan objek terpilih, riak gempa baru, arus di garis megathrust ---
   useEffect(() => {
-    if (map) setData(map, "pilih", pilihan ? [titik(pilihan.lon, pilihan.lat, {})] : []);
-  }, [map, pilihan]);
+    if (!map) return;
+    const garis = pilihan?.jenis === "sesar";
+    sorotGaris(map, garis ? pilihan.idFitur : null);
+    if (efekRef.current) efekRef.current.pilih = pilihan && !garis ? { lon: pilihan.lon, lat: pilihan.lat } : null;
+  }, [map, efekRef, pilihan]);
 
-  const gempaSorot = useMemo(() => {
-    const baru = (data.gempa?.gempa ?? []).filter((g) => g.waktu >= sekarang - 6 * 3600_000 && g.mag >= 4.5);
-    return baru.sort((a, b) => b.mag - a.mag)[0] ?? null;
-  }, [data.gempa, sekarang]);
+  const riak = useMemo(
+    () =>
+      aktifEfektif.has("gempa")
+        ? (data.gempa?.gempa ?? [])
+            .filter((g) => g.waktu >= sekarang - 86_400_000 && g.mag >= 4.5)
+            .slice(0, 14)
+            .map((g) => ({ lon: g.lon, lat: g.lat, mag: g.mag }))
+        : [],
+    [data.gempa, sekarang, aktifEfektif],
+  );
   useEffect(() => {
-    if (!map || !gempaSorot || !aktifEfektif.has("gempa")) return;
-    const el = document.createElement("div");
-    el.className = "pulsa-gempa";
-    el.setAttribute("aria-hidden", "true");
-    const marker = new Marker({ element: el }).setLngLat([gempaSorot.lon, gempaSorot.lat]).addTo(map);
-    return () => {
-      marker.remove();
-    };
-  }, [map, gempaSorot, aktifEfektif]);
+    if (efekRef.current) efekRef.current.riak = riak;
+  }, [map, efekRef, riak]);
 
+  const sesarTampil = aktifEfektif.has("sesar");
+  useEffect(() => {
+    // di ponsel lebih pelan: tiap langkah = satu kali gambar ulang peta
+    if (map && sesarTampil) return animasiArus(map, undefined, window.matchMedia("(max-width: 640px), (pointer: coarse)").matches ? 150 : 90);
+  }, [map, sesarTampil]);
 
   // --- mode peta ---
   useEffect(() => {
@@ -476,19 +527,63 @@ export default function Console() {
         return h ? { jenis: "historis", id, lon: h[0], lat: h[1], data: h } : null;
       }
       if (jenis === "rs") return { jenis: "rs", id, lon: koordinat[0], lat: koordinat[1], nama: String(p.nama ?? "") };
-      if (jenis === "sesar") return { jenis: "sesar", id: `sesar-${p.nama}`, lon, lat, nama: String(p.nama ?? ""), gerak: String(p.gerak ?? ""), laju: typeof p.laju === "number" ? p.laju : null, megathrust: p.jenis === "megathrust" };
+      if (jenis === "sesar") return { jenis: "sesar", id: `sesar-${f.id}`, lon, lat, nama: String(p.nama ?? ""), gerak: String(p.gerak ?? ""), laju: typeof p.laju === "number" ? p.laju : null, megathrust: p.jenis === "megathrust", idFitur: Number(f.id) };
       return null;
     },
     [data.hotspot, data.gempa, data.gunung, data.bencana, data.peringatan, cuaca],
   );
 
+  /** Objek teratas di sekitar satu titik layar (urutan prioritas URUTAN_KLIK), atau null. */
+  const cariPilihan = useCallback(
+    (m: MapLibre, titikLayar: { x: number; y: number }, r: number, lon: number, lat: number): Pilihan | null => {
+      const ids = URUTAN_KLIK.filter((id) => m.getLayer(id) && m.getLayoutProperty(id, "visibility") !== "none");
+      const kotak: [PointLike, PointLike] = [
+        [titikLayar.x - r, titikLayar.y - r],
+        [titikLayar.x + r, titikLayar.y + r],
+      ];
+      const kena = m.queryRenderedFeatures(kotak, { layers: ids });
+      for (const idLayer of URUTAN_KLIK) {
+        const f = kena.find((x) => x.layer.id === idLayer);
+        if (!f) continue;
+        const p = pilihDariFitur(idLayer, f, lon, lat);
+        if (p) return p;
+      }
+      return null;
+    },
+    [pilihDariFitur],
+  );
+
   useEffect(() => {
+    const sembunyikanTip = () => {
+      if (tipRef.current) tipRef.current.hidden = true;
+    };
     penanganRef.current = {
       saatMoveEnd: (m) => {
         if (!boot) tulis(m);
       },
+      saatKeluar: sembunyikanTip,
+      // tooltip diubah langsung di DOM: kursor bergerak puluhan kali per detik, jangan sampai seluruh konsol dirender ulang
+      saatHover: (m, e) => {
+        if (alat === "replay" || alat === "gempa" || alat === "tsunami" || briefing) {
+          sembunyikanTip();
+          return false;
+        }
+        const p = cariPilihan(m, e.point, TOLERANSI_KLIK.mouse, e.lngLat.lng, e.lngLat.lat);
+        const el = tipRef.current;
+        if (!p || !el) {
+          sembunyikanTip();
+          return Boolean(p);
+        }
+        el.textContent = ringkasPilihan(p, lang, Date.now());
+        el.hidden = false;
+        const lebar = el.offsetWidth;
+        const x = Math.min(e.point.x + 14, m.getContainer().clientWidth - lebar - 8);
+        el.style.transform = `translate(${Math.max(8, x)}px, ${Math.max(8, e.point.y - 34)}px)`;
+        return true;
+      },
       saatKlik: (m: MapLibre, e: MapMouseEvent) => {
         const { lng: lon, lat } = e.lngLat;
+        sembunyikanTip();
         if (alat === "gempa") {
           setSkenGempa((s) => ({ lon, lat, mag: s?.mag ?? MAG_AWAL, dalam: s?.dalam ?? DALAM_AWAL }));
           return;
@@ -499,29 +594,16 @@ export default function Console() {
         }
         if (alat === "replay" || briefing) return;
         const sentuh = (e.originalEvent as PointerEvent | undefined)?.pointerType === "touch" || window.matchMedia("(pointer: coarse)").matches;
-        const r = sentuh ? TOLERANSI_KLIK.sentuh : TOLERANSI_KLIK.mouse;
-        const ids = URUTAN_KLIK.filter((id) => m.getLayer(id) && m.getLayoutProperty(id, "visibility") !== "none");
-        const kena = m.queryRenderedFeatures(
-          [
-            [e.point.x - r, e.point.y - r],
-            [e.point.x + r, e.point.y + r],
-          ],
-          { layers: ids },
-        );
-        for (const idLayer of URUTAN_KLIK) {
-          const f = kena.find((x) => x.layer.id === idLayer);
-          if (!f) continue;
-          const p = pilihDariFitur(idLayer, f, lon, lat);
-          if (p) {
-            setPilihan(p);
-            return;
-          }
+        const p = cariPilihan(m, e.point, sentuh ? TOLERANSI_KLIK.sentuh : TOLERANSI_KLIK.mouse, lon, lat);
+        if (p) {
+          setPilihan(p);
+          return;
         }
         // klik di tempat kosong: tutup panel kalau ada, kalau tidak tampilkan prakiraan titik itu
         setPilihan((kini) => (kini ? null : { jenis: "titik", id: `t-${lon.toFixed(3)}-${lat.toFixed(3)}`, lon, lat }));
       },
     };
-  }, [alat, briefing, boot, tulis, pilihDariFitur]);
+  }, [alat, briefing, boot, lang, tulis, cariPilihan]);
 
   // --- aksi ---
   const toggle = useCallback((id: IdLapisan) => setAktif((a) => toggleLapisan(a, id)), []);
@@ -634,6 +716,8 @@ export default function Console() {
       <div className="absolute inset-0">
         <div ref={wadahRef} className="h-full w-full" role="application" aria-label={t("map_label")} />
       </div>
+      {/* tooltip objek di bawah kursor (desktop); isinya diubah langsung dari penangan peta */}
+      <div ref={tipRef} hidden role="tooltip" className="glass-padat pointer-events-none absolute left-0 top-0 z-20 max-w-[320px] truncate px-2.5 py-1.5 text-[11.5px] text-text" data-testid="tooltip-peta" />
       <div className="vinyet" />
       <div className="pindai" />
 
@@ -682,6 +766,7 @@ export default function Console() {
               onRentang={setRentang}
               inarisk={medan === "inarisk" ? inarisk : null}
               onInarisk={setInarisk}
+              inariskMuat={inariskMuat}
               catatan={cuaca ? `${t("forecast_made")} ${umur(cuaca.dibuat, sekarang, lang)}` : undefined}
             />
           )}
@@ -690,7 +775,7 @@ export default function Console() {
 
       {!briefing && pilihan && alat !== "gempa" && alat !== "tsunami" && <PanelDetail lang={lang} pilihan={pilihan} cuaca={cuaca} sekarang={sekarang} onTutup={() => setPilihan(null)} onSkenario={bukaSkenario} />}
       {alat === "gempa" && <AlatGempa lang={lang} map={map} skenario={skenGempa} onUbah={setSkenGempa} onTutup={() => setAlat(null)} onTsunami={(s) => bukaSkenario("tsunami", s.lon, s.lat, s.mag, s.dalam)} />}
-      {alat === "tsunami" && <AlatTsunami lang={lang} map={map} kanvas={kanvas?.tsunami ?? null} skenario={skenTsunami} onUbah={setSkenTsunami} onTutup={() => setAlat(null)} />}
+      {alat === "tsunami" && <AlatTsunami lang={lang} map={map} kanvas={kanvasTsunami} skenario={skenTsunami} onUbah={setSkenTsunami} onTutup={() => setAlat(null)} />}
       {alat === "warroom" && <WarRoom lang={lang} map={map} sitrep={sitrep} sumberGagal={data.galat.size} onTutup={() => setAlat(null)} onBriefing={setBriefing} onToast={setToast} />}
       {replay && <Replay2019 lang={lang} map={map} onTutup={() => setAlat(null)} />}
 
