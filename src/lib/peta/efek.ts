@@ -138,7 +138,10 @@ export class KanvasEfek {
     private map: MapLibre,
     wadah: HTMLElement,
     private hemat = false,
+    /** WebGL dirender CPU (tanpa akselerasi GPU): kanvas 2D juga mahal di situ, jadi mulai dari mutu terendah */
+    lemah = false,
   ) {
+    if (lemah) this.mutu = 0.25;
     this.kanvas = document.createElement("canvas");
     this.kanvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;";
     this.kanvas.setAttribute("aria-hidden", "true");
@@ -227,11 +230,17 @@ export class KanvasEfek {
   private mutu = 1;
   private frameSejakAtur = 0;
 
+  private msSejakAtur = 0;
+
   private aturMutu(dt: number) {
-    this.selangRata += (dt - this.selangRata) * 0.08;
-    if (++this.frameSejakAtur < 40) return;
+    this.selangRata += (dt - this.selangRata) * 0.2;
+    this.msSejakAtur += dt;
+    // dinilai tiap ~0,7 detik (atau 40 frame): perangkat yang sangat lambat tidak boleh menunggu puluhan frame dulu
+    if (++this.frameSejakAtur < 40 && this.msSejakAtur < 700) return;
     this.frameSejakAtur = 0;
-    if (this.selangRata > 40 && this.mutu > 0.2) this.mutu = Math.max(0.2, this.mutu * 0.7);
+    this.msSejakAtur = 0;
+    if (this.selangRata > 120) this.mutu = 0.2;
+    else if (this.selangRata > 40 && this.mutu > 0.2) this.mutu = Math.max(0.2, this.mutu * 0.7);
     else if (this.selangRata < 22 && this.mutu < 1) this.mutu = Math.min(1, this.mutu * 1.2);
   }
 
@@ -367,7 +376,8 @@ export class KanvasEfek {
     }
     // satu path per (kelas kecepatan x tingkat umur jejak): jauh lebih murah daripada stroke per partikel
     ctx.lineCap = "round";
-    ctx.globalCompositeOperation = "lighter";
+    // pencampuran aditif bikin jejak yang bertumpuk tampak menyala, tapi mahal tanpa GPU
+    if (!this.hemat) ctx.globalCompositeOperation = "lighter";
     for (let tingkat = 0; tingkat < 3; tingkat++) {
       for (let kelas = 0; kelas < 4; kelas++) {
         ctx.beginPath();

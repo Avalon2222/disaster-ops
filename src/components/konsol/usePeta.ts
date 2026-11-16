@@ -30,6 +30,19 @@ interface Opsi {
  * Membuat peta MapLibre (globe) sekali, memasang semua layer dan kanvas, lalu meneruskan event ke konsol.
  * `map` dan `kanvasTsunami` baru terisi setelah style dan layer siap, jadi efek di konsol cukup bergantung padanya.
  */
+/** Apakah WebGL peta dirender CPU (SwiftShader, llvmpipe, dsb.), bukan GPU. */
+function rendererPerangkatLunak(m: MapLibre): boolean {
+  try {
+    const kanvas = m.getCanvas();
+    const gl = (kanvas.getContext("webgl2") ?? kanvas.getContext("webgl")) as WebGLRenderingContext | null;
+    const ext = gl?.getExtension("WEBGL_debug_renderer_info");
+    const nama = gl && ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : "";
+    return /swiftshader|llvmpipe|software|basic render/i.test(nama);
+  } catch {
+    return false;
+  }
+}
+
 export function usePeta({ tampilan, satAwal, datarAwal, penanganRef }: Opsi) {
   const wadahRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<MapLibre | null>(null);
@@ -107,7 +120,10 @@ export function usePeta({ tampilan, satAwal, datarAwal, penanganRef }: Opsi) {
         if (awal.current.satAwal) terapkanSat(m, true);
         if (awal.current.datarAwal) m.setProjection({ type: "mercator" });
         const induk = wadahRef.current?.parentElement;
-        if (induk) efekRef.current = new KanvasEfek(m, induk, window.matchMedia("(max-width: 640px), (pointer: coarse)").matches);
+        if (induk) {
+          const lemah = rendererPerangkatLunak(m);
+          efekRef.current = new KanvasEfek(m, induk, lemah || window.matchMedia("(max-width: 640px), (pointer: coarse)").matches, lemah);
+        }
         setMap(m);
       });
       m.on("moveend", () => penanganRef.current.saatMoveEnd(m));
