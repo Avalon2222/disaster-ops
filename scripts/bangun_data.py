@@ -16,7 +16,7 @@ import json
 import math
 import struct
 import sys
-import urllib.parse
+import time
 import urllib.request
 from pathlib import Path
 
@@ -38,12 +38,9 @@ URL = {
     "pb2002.json": "https://raw.githubusercontent.com/fraxen/tectonicplates/master/GeoJSON/PB2002_boundaries.json",
     "usgs_m6.json": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=1900-01-01&minmagnitude=6&minlatitude=-13&maxlatitude=9&minlongitude=92&maxlongitude=143&orderby=time",
     "modis_2019_Indonesia.csv": "https://firms.modaps.eosdis.nasa.gov/data/country/modis/2019/modis_2019_Indonesia.csv",
+    # ekspor OpenStreetMap oleh Humanitarian OpenStreetMap Team (HDX), diperbarui berkala
+    "rs_hotosm.zip": "https://production-raw-data-api.s3.amazonaws.com/ISO3/IDN/health_facilities/hotosm_idn_health_facilities_osm_geojson.zip",
 }
-OVERPASS = [
-    "https://overpass-api.de/api/interpreter",
-    "https://overpass.kumi.systems/api/interpreter",
-    "https://overpass.private.coffee/api/interpreter",
-]
 
 
 def ambil(nama: str) -> Path:
@@ -153,9 +150,63 @@ def _angka_pertama(teks) -> float | None:
         return None
 
 
+# pusat kasar kepulauan Indonesia: gigi megathrust menunjuk ke arah sini (lempeng yang menumpang)
+PUSAT_NUSANTARA = (118.0, -2.0)
+
+
+def _chaikin(garis: list, ulang: int = 2) -> list:
+    """Haluskan sudut garis (Chaikin): tiap ruas diganti dua titik di 1/4 dan 3/4-nya."""
+    for _ in range(ulang):
+        if len(garis) < 3:
+            break
+        hasil = [garis[0]]
+        for a, b in zip(garis, garis[1:]):
+            hasil.append([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25])
+            hasil.append([a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75])
+        hasil.append(garis[-1])
+        garis = hasil
+    return garis
+
+
+def _sambung(potongan: list[list]) -> list[list]:
+    """Rangkai potongan garis yang ujungnya bertemu jadi garis panjang."""
+    sisa = [list(p) for p in potongan]
+    hasil = []
+    dekat = lambda a, b: abs(a[0] - b[0]) < 0.02 and abs(a[1] - b[1]) < 0.02  # noqa: E731
+    while sisa:
+        garis = sisa.pop(0)
+        berubah = True
+        while berubah:
+            berubah = False
+            for i, p in enumerate(sisa):
+                if dekat(garis[-1], p[0]):
+                    garis += p[1:]
+                elif dekat(garis[-1], p[-1]):
+                    garis += p[::-1][1:]
+                elif dekat(garis[0], p[-1]):
+                    garis = p[:-1] + garis
+                elif dekat(garis[0], p[0]):
+                    garis = p[::-1][:-1] + garis
+                else:
+                    continue
+                sisa.pop(i)
+                berubah = True
+                break
+        hasil.append(garis)
+    return hasil
+
+
+def _arahkan(garis: list) -> list:
+    """Balik arah garis kalau perlu, supaya pusat Nusantara ada di sisi KIRI arah jalannya."""
+    cx, cy = PUSAT_NUSANTARA
+    silang = sum((b[0] - a[0]) * (cy - a[1]) - (b[1] - a[1]) * (cx - a[0]) for a, b in zip(garis, garis[1:]))
+    return garis if silang >= 0 else garis[::-1]
+
+
 def bangun_sesar() -> None:
-    """Sesar aktif (GEM) dan batas subduksi (PB2002) di kawasan Indonesia."""
+    """Sesar aktif (GEM) dan zona subduksi (PB2002) di kawasan Indonesia."""
     fitur = []
+    lihat = set()
     gem = json.loads(ambil("gem_faults.geojson").read_text(encoding="utf-8"))
     for f in gem["features"]:
         g = f["geometry"]
@@ -167,6 +218,14 @@ def bangun_sesar() -> None:
             l2 = _potong(l)
             if len(l2) < 2:
                 continue
+            # katalog GEM memuat sebagian sesar dua kali (dari dua sumber): cukup satu
+            kunci = (tuple(l2[0]), tuple(l2[-1]), len(l2))
+            if kunci in lihat or (kunci[1], kunci[0], kunci[2]) in lihat:
+                continue
+            lihat.add(kunci)
+            # jejak yang didigitasi kasar (ruas panjang, belokan patah) dihaluskan supaya tidak tampak bersudut
+            if max(math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(l2, l2[1:])) > 0.12:
+                l2 = _potong(_chaikin(l2))
             fitur.append({
                 "type": "Feature",
                 "properties": {
@@ -177,21 +236,37 @@ def bangun_sesar() -> None:
                 },
                 "geometry": {"type": "LineString", "coordinates": l2},
             })
-    n_sesar = len(fitur)
     pb = json.loads(ambil("pb2002.json").read_text(encoding="utf-8"))
-    for f in pb["features"]:
-        p = f["properties"]
-        if p.get("Type") != "subduction":
-            continue
-        l = f["geometry"]["coordinates"]
-        if not any(dalam_kotak(c[0], c[1]) for c in l):
-            continue
-        fitur.append({
+    potongan = [f["geometry"]["coordinates"] for f in pb["features"] if f["properties"].get("Type") == "subduction" and any(dalam_kotak(c[0], c[1]) for c in f["geometry"]["coordinates"])]
+    megathrust = []
+    for garis in _sambung(potongan):
+        # dirangkai, diarahkan (gigi menunjuk ke lempeng yang menumpang), lalu dihaluskan
+        halus = _potong(_chaikin(_arahkan(garis)))
+        megathrust.append({
             "type": "Feature",
-            "properties": {"jenis": "megathrust", "nama": f"Subduksi {p.get('Name', '')}", "gerak": "Subduction", "laju": None},
-            "geometry": {"type": "LineString", "coordinates": _potong(l)},
+            "properties": {"jenis": "megathrust", "nama": "", "gerak": "Subduction", "laju": None},
+            "geometry": {"type": "LineString", "coordinates": halus},
         })
-    print(f"  sesar aktif {n_sesar}, segmen subduksi {len(fitur) - n_sesar}")
+    # GEM juga memuat jejak palung yang sama dengan garis megathrust: dibuang supaya tidak ada garis kembar
+    rapat = []
+    for m in megathrust:
+        k = m["geometry"]["coordinates"]
+        for (x0, y0), (x1, y1) in zip(k, k[1:]):
+            n = max(1, int(math.hypot(x1 - x0, y1 - y0) / 0.1))
+            rapat += [(x0 + (x1 - x0) * i / n, y0 + (y1 - y0) * i / n) for i in range(n + 1)]
+    rapat = np.array(rapat)
+
+    def kembar(f) -> bool:
+        k = np.array(f["geometry"]["coordinates"])
+        jarak = np.sqrt(((k[:, None, :] - rapat[None, :, :]) ** 2).sum(axis=2)).min(axis=1)
+        return float((jarak < 0.45).mean()) >= 0.7 or "subduction" in f["properties"]["gerak"].lower()
+
+    sebelum = len(fitur)
+    fitur = [f for f in fitur if not kembar(f)]
+    n_sesar = len(fitur)
+    print(f"  {sebelum - n_sesar} jejak GEM dibuang karena berimpit dengan megathrust")
+    fitur += megathrust
+    print(f"  sesar aktif {n_sesar}, zona subduksi {len(fitur) - n_sesar} (dari {len(potongan)} potongan)")
     tulis_json("sesar.geojson", {"type": "FeatureCollection", "features": fitur})
 
 
@@ -260,40 +335,155 @@ def bangun_karhutla_2019() -> dict:
 
 
 def bangun_rs() -> None:
-    """Rumah sakit dari OpenStreetMap (amenity=hospital): [lon, lat, nama]."""
-    jalur = SUMBER / "rs_osm.json"
-    if not jalur.exists() or jalur.stat().st_size < 10_000:
-        kueri = '[out:json][timeout:300];area["ISO3166-1"="ID"][admin_level=2]->.a;(nwr["amenity"="hospital"](area.a););out center tags;'
-        badan = urllib.parse.urlencode({"data": kueri}).encode()
-        for url in OVERPASS:
-            try:
-                print(f"  Overpass {url} ...")
-                req = urllib.request.Request(url, data=badan, headers={"User-Agent": UA, "Accept": "application/json"})
-                with urllib.request.urlopen(req, timeout=400) as res:
-                    isi = res.read()
-                if len(isi) > 10_000:
-                    jalur.write_bytes(isi)
-                    break
-            except Exception as e:  # noqa: BLE001 - coba cermin berikutnya
-                print(f"    gagal: {e}")
-        else:
-            raise SystemExit("Semua server Overpass gagal")
-    d = json.loads(jalur.read_text(encoding="utf-8"))
+    """Rumah sakit dari OpenStreetMap (amenity=hospital), lewat ekspor HOT: [lon, lat, nama]."""
+    import zipfile
+
+    with zipfile.ZipFile(ambil("rs_hotosm.zip")) as z:
+        d = json.loads(z.read("health_facilities.geojson"))
     baris, lihat = [], set()
-    for e in d["elements"]:
-        lat = e.get("lat") or (e.get("center") or {}).get("lat")
-        lon = e.get("lon") or (e.get("center") or {}).get("lon")
-        if lat is None or lon is None:
+    for f in d["features"]:
+        p = f["properties"]
+        if p.get("amenity") != "hospital":
             continue
-        nama = (e.get("tags") or {}).get("name") or ""
+        g = f["geometry"]
+        if g["type"] == "Point":
+            lon, lat = g["coordinates"][:2]
+        elif g["type"] in ("Polygon", "MultiPolygon"):
+            # bangunan rumah sakit: pakai titik tengah ring luarnya
+            ring = g["coordinates"][0] if g["type"] == "Polygon" else g["coordinates"][0][0]
+            lon = sum(c[0] for c in ring) / len(ring)
+            lat = sum(c[1] for c in ring) / len(ring)
+        else:
+            continue
+        if not dalam_kotak(lon, lat):
+            continue
+        # node dan bangunan untuk rumah sakit yang sama sering dua-duanya ada: cukup satu per ~100 m
         kunci = (round(lon, 3), round(lat, 3))
         if kunci in lihat:
             continue
         lihat.add(kunci)
-        baris.append([round(lon, 4), round(lat, 4), nama.strip()])
+        nama = (p.get("name") or p.get("name_id") or p.get("name_en") or "").strip()
+        baris.append([round(lon, 4), round(lat, 4), nama])
     baris.sort()
     print(f"  rumah sakit: {len(baris)} ({sum(1 for b in baris if b[2])} bernama)")
     tulis_json("rs.json", baris)
+
+
+# ---------------------------------------------------------------- peta bahaya InaRISK
+
+# Kotak ini harus sama dengan KOTAK_INARISK di src/lib/peta/pasang.ts
+KOTAK_INARISK = (94.5, -11.5, 141.5, 6.5)
+LEBAR_INARISK = 4096
+LAYANAN_INARISK = {
+    "gempa": "INDEKS_BAHAYA_GEMPABUMI",
+    "tsunami": "INDEKS_BAHAYA_TSUNAMI",
+    "banjir": "INDEKS_BAHAYA_BANJIR",
+    "longsor": "INDEKS_BAHAYA_TANAHLONGSOR",
+    "karhutla": "INDEKS_BAHAYA_KARHUTLA",
+    "gunungapi": "INDEKS_BAHAYA_GUNUNGAPI",
+}
+# bahaya yang bentuknya tipis (pesisir, lereng gunung): ditebalkan sedikit supaya terbaca dari jauh
+TEBALKAN_INARISK = {"tsunami": 2, "gunungapi": 2}
+
+
+def _merc(lat: float) -> float:
+    return math.log(math.tan(math.pi / 4 + math.radians(lat) / 2))
+
+
+def _baca_tiff_jarang(jalur: Path) -> np.ndarray:
+    """
+    TIFF F32 dari ArcGIS itu "jarang": ubin yang seluruhnya kosong tidak disimpan (offset 0).
+    Pillow tetap membacanya dari awal berkas, jadi ubin itu berisi sampah header. Di sini diganti NaN.
+    """
+    from PIL import Image
+
+    im = Image.open(jalur)
+    a = np.array(im, dtype=np.float32)
+    tag = im.tag_v2
+    offset, lebar_ubin, tinggi_ubin = tag.get(324), tag.get(322), tag.get(323)
+    if offset and lebar_ubin and tinggi_ubin:
+        per_baris = math.ceil(a.shape[1] / lebar_ubin)
+        for i, o in enumerate(offset):
+            if o == 0:
+                r, k = divmod(i, per_baris)
+                a[r * tinggi_ubin : (r + 1) * tinggi_ubin, k * lebar_ubin : (k + 1) * lebar_ubin] = np.nan
+    return a
+
+
+def _indeks_inarisk(layanan: str, lebar: int, tinggi: int) -> np.ndarray:
+    """Indeks bahaya 0..1 (NaN = tidak ada data) dari ImageServer BNPB, diambil dua kali resolusi tujuan dalam dua paruh."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    x0, y0, x1, y1 = KOTAK_INARISK
+    tengah = (x0 + x1) / 2
+    paruh = []
+    for i, (a, b) in enumerate(((x0, tengah), (tengah, x1))):
+        jalur = SUMBER / f"inarisk_{layanan}_{i}.tif"
+        if not jalur.exists() or jalur.stat().st_size < 100_000:
+            url = (
+                f"https://gis.bnpb.go.id/server/rest/services/inarisk/{layanan}/ImageServer/exportImage"
+                f"?bbox={a},{y0},{b},{y1}&bboxSR=4326&imageSR=3857&size={lebar},{tinggi * 2}&format=tiff&pixelType=F32&noData=-9999&f=image"
+            )
+            for coba in range(4):
+                try:
+                    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130 Safari/537.36"})
+                    with urllib.request.urlopen(req, timeout=300) as res:
+                        isi = res.read()
+                    Image.open(BytesIO(isi)).size  # noqa: B018 - pastikan benar-benar gambar
+                    jalur.write_bytes(isi)
+                    break
+                except Exception as e:  # noqa: BLE001
+                    print(f"    {layanan} paruh {i} gagal ({e}), coba lagi")
+                    time.sleep(10 * (coba + 1))
+            else:
+                raise SystemExit(f"InaRISK {layanan} tidak bisa diambil")
+        paruh.append(_baca_tiff_jarang(jalur))
+    a = np.concatenate(paruh, axis=1)
+    a[~((a >= 0) & (a <= 1.001))] = np.nan
+    return a
+
+
+def bangun_inarisk() -> None:
+    """Peta bahaya InaRISK (BNPB) jadi satu gambar per jenis, sudah diwarnai dengan palet sendiri."""
+    from PIL import Image
+
+    palet = json.loads((AKAR / "src" / "lib" / "peta" / "palet_inarisk.json").read_text(encoding="utf-8"))
+    x0, y0, x1, y1 = KOTAK_INARISK
+    lebar = LEBAR_INARISK
+    tinggi = round(lebar * (_merc(y1) - _merc(y0)) / math.radians(x1 - x0))
+    keluar = KELUAR / "inarisk"
+    keluar.mkdir(parents=True, exist_ok=True)
+    for jenis, layanan in LAYANAN_INARISK.items():
+        a = _indeks_inarisk(layanan, lebar, tinggi)
+        # turunkan 2x dengan rata-rata yang sadar "tidak ada data": tepi pulau jadi halus, bukan bergerigi
+        ada = np.isfinite(a)
+        nilai = np.where(ada, a, 0).reshape(tinggi, 2, lebar, 2).sum(axis=(1, 3))
+        cakup = ada.reshape(tinggi, 2, lebar, 2).sum(axis=(1, 3)).astype(np.float32)
+        v = np.where(cakup > 0, nilai / np.maximum(cakup, 1), 0)
+        cakup /= 4
+        henti = np.array(palet[jenis], dtype=np.float32)
+        rgba = np.stack([np.interp(v, henti[:, 0], henti[:, k]) for k in (1, 2, 3, 4)], axis=-1)
+        alfa = rgba[..., 3] * np.minimum(1, cakup * 1.5)
+        for _ in range(TEBALKAN_INARISK.get(jenis, 0)):
+            # tebalkan: piksel kosong mengambil warna tetangga terkuatnya, sedikit lebih pudar
+            terbaik = alfa.copy()
+            warna = rgba[..., :3].copy()
+            for dy, dx in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+                geser_a = np.roll(alfa, (dy, dx), axis=(0, 1)) * 0.8
+                geser_w = np.roll(rgba[..., :3], (dy, dx), axis=(0, 1))
+                ganti = geser_a > terbaik
+                terbaik = np.where(ganti, geser_a, terbaik)
+                warna = np.where(ganti[..., None], geser_w, warna)
+            alfa = terbaik
+            rgba = np.concatenate([warna, alfa[..., None]], axis=-1)
+        rgba[..., 3] = alfa
+        gambar = Image.fromarray(np.clip(rgba + 0.5, 0, 255).astype(np.uint8), "RGBA")
+        jalur = keluar / f"{jenis}.webp"
+        gambar.save(jalur, "WEBP", quality=84, alpha_quality=92, method=6)
+        terisi = float((alfa > 8).mean()) * 100
+        print(f"  -> {jalur.relative_to(AKAR)} {lebar}x{tinggi} ({jalur.stat().st_size / 1024:.0f} KB), {terisi:.1f}% piksel berwarna")
 
 
 # ---------------------------------------------------------------- berkas kecil
@@ -335,6 +525,7 @@ TAHAP = {
     "gempa": bangun_gempa_historis,
     "karhutla2019": bangun_karhutla_2019,
     "rs": bangun_rs,
+    "inarisk": bangun_inarisk,
     "kecil": bangun_kecil,
 }
 

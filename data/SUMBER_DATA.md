@@ -14,7 +14,6 @@ bagaimana diolah, dan batasannya. Kalau ada yang keliru atau usang, itu bug: sil
 | Kejadian bencana | BNPB, layanan ArcGIS "Kejadian Bencana Mingguan" | `gis.bnpb.go.id/server/rest/services/Kejadian_Bencana_Mingguan` | Data BNPB, cantumkan sumber | `src/lib/sumber/bencana.ts` |
 | Laporan warga | PetaBencana.id (Yayasan Peta Bencana), laporan 7 hari | `data.petabencana.id/reports` | CC BY 4.0 | `src/lib/sumber/bencana.ts` |
 | Peringatan dini cuaca | BMKG nowcast, format CAP | `www.bmkg.go.id/alerts/nowcast/id` | Dinyatakan *public domain* di feed-nya | `src/lib/sumber/peringatan.ts` |
-| Peta bahaya | InaRISK BNPB (gempa, tsunami, banjir, longsor, karhutla, gunung api) | `gis.bnpb.go.id/server/rest/services/inarisk/...ImageServer` | Data BNPB, cantumkan sumber | `src/app/api/inarisk` |
 | Citra harian | NASA GIBS, VIIRS Corrected Reflectance (True Color) | `gibs.earthdata.nasa.gov/wmts/epsg3857/best/` | Bebas dipakai, atribusi NASA GIBS / ESDIS | `src/lib/peta/pasang.ts` |
 | Rute jalan | Server demo OSRM di atas OpenStreetMap | `router.project-osrm.org` | Data ODbL; server tanpa jaminan layanan, hanya untuk pemakaian ringan | `src/lib/rute.ts` |
 | Peta dasar | OpenFreeMap (OpenMapTiles, OpenStreetMap); mode SAT dari Esri World Imagery | `tiles.openfreemap.org`, `server.arcgisonline.com` | ODbL untuk data OSM; citra © Esri dan pemasoknya | `src/lib/peta/mapStyle.ts` |
@@ -22,7 +21,6 @@ bagaimana diolah, dan batasannya. Kalau ada yang keliru atau usang, itu bug: sil
 Catatan:
 
 - Server BMKG menolak permintaan tanpa User-Agent peramban, jadi route API mengirim User-Agent biasa.
-- Server ArcGIS BNPB tidak mengirim header CORS, jadi ubin InaRISK diteruskan lewat `/api/inarisk`.
 - Kalau sebuah sumber gagal, route melayani jawaban terakhir yang berhasil; kalau belum pernah berhasil, browser
   menerima `{ "galat": "upstream" }` dan lapisannya ditandai `DOWN`.
 
@@ -49,9 +47,10 @@ itu sendiri), bukan angka mutlaknya.
 |---|---|---|---|---|
 | `batimetri.dat` | Kedalaman laut dan tinggi daratan, 826 × 406 sel Int16 (meter) | [ETOPO 2022](https://www.ncei.noaa.gov/products/etopo-global-relief-model) 15 detik busur, NOAA NCEI, lewat ERDDAP PIFSC | Domain publik (NOAA) | Diambil tiap 16 sel (4 menit busur, ~7,4 km), 90-145 BT, 15 LS - 12 LU |
 | `populasi.dat` | Penduduk per sel 0,05°, 921 × 342 sel Uint16 | [WorldPop](https://www.worldpop.org) 2020, 1 km, UN-adjusted, Indonesia | CC BY 4.0 | 6 × 6 sel dijumlah; disimpan sebagai `round(sqrt(n) × 60)`. Total 273,5 juta sebelum dan sesudah kuantisasi |
-| `rs.json` | 1.285 rumah sakit: lon, lat, nama | OpenStreetMap (`amenity=hospital`) lewat Overpass API | ODbL | Titik berimpit dibuang. Belum lengkap: Indonesia punya ~3.000 rumah sakit |
-| `sesar.geojson` | 322 sesar aktif | [GEM Global Active Faults](https://github.com/GEMScienceTools/gem-global-active-faults) | CC BY-SA 4.0 | Dipotong ke kotak Indonesia, koordinat 3 desimal |
-| `sesar.geojson` | 17 segmen zona subduksi | Bird (2003), PB2002, lewat [fraxen/tectonicplates](https://github.com/fraxen/tectonicplates) | ODC PDDL | Hanya batas bertipe subduksi |
+| `rs.json` | 3.567 rumah sakit: lon, lat, nama | OpenStreetMap (`amenity=hospital`) lewat [ekspor HOT di HDX](https://data.humdata.org/dataset/hotosm_idn_health_facilities) | ODbL | Bangunan diwakili titik tengahnya; titik yang berimpit (~100 m) dibuang. Selengkap yang sudah dipetakan relawan OSM |
+| `sesar.geojson` | 154 sesar aktif | [GEM Global Active Faults](https://github.com/GEMScienceTools/gem-global-active-faults) | CC BY-SA 4.0 | Dipotong ke kotak Indonesia, koordinat 3 desimal. Jejak bertipe subduksi dibuang (sudah diwakili garis megathrust); jejak yang didigitasi kasar dihaluskan |
+| `sesar.geojson` | 6 garis zona subduksi | Bird (2003), PB2002, lewat [fraxen/tectonicplates](https://github.com/fraxen/tectonicplates) | ODC PDDL | Hanya batas bertipe subduksi. 17 potongan dirangkai jadi 6 garis, diarahkan supaya gigi menunjuk ke lempeng yang menumpang, lalu dihaluskan |
+| `inarisk/*.webp` | Peta bahaya gempa, tsunami, banjir, longsor, karhutla, gunung api: 4096 × 1577 piksel (94,5-141,5 BT, 11,5 LS - 6,5 LU) | [InaRISK BNPB](https://inarisk.bnpb.go.id), layanan `INDEKS_BAHAYA_*` di `gis.bnpb.go.id` | Data BNPB, cantumkan sumber | Indeks 0-1 diambil ~640 m per piksel, dirata-rata 2 × 2, lalu diwarnai dengan `src/lib/peta/palet_inarisk.json`. Zona tsunami dan gunung api ditebalkan 1-2 piksel supaya terbaca dari jauh |
 | `gempa_historis.json` | 1.829 gempa M6+ sejak 1900 | Katalog USGS (ComCat) | Domain publik | lon, lat, kedalaman, magnitudo, tahun, tempat |
 | `karhutla2019.dat` | 74.025 deteksi api 1 Jul - 30 Nov 2019, 6 byte per titik | NASA FIRMS, arsip MODIS C6.1 per negara | Bebas dipakai, atribusi FIRMS | Hanya tipe 0 (api vegetasi) dengan keyakinan ≥ 30 % |
 | `data/karhutla_2019_harian.csv` | Jumlah titik panas dan total FRP per hari, 153 baris | Ringkasan dari berkas di atas | sama | Berguna untuk grafik di luar aplikasi |
