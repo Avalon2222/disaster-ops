@@ -2,6 +2,39 @@
 
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/id-ID/1.1.0/), versi mengikuti [SemVer](https://semver.org/lang/id/).
 
+## [1.1.0] - 2026-11-16
+
+### Diubah
+
+- Angin, hujan, kabut PM2.5, dan asap pindah ke satu kanvas efek yang digambar ulang tiap frame dari koordinat
+  geografis: gak ada lagi lapisan yang hilang waktu peta digeser atau di-zoom, dan tepinya memudar membulat, bukan
+  terpotong kotak.
+- Hujan sekarang rintik yang jatuh di tempat prakiraannya, PM2.5 kabut yang hanyut bersama angin; medan suhu dan
+  FWI dibuat lebih tipis supaya yang menonjol hanya yang menyimpang. Kota-kota utama menampilkan angkanya.
+- Ikon baru digambar sendiri: palang untuk rumah sakit, glif per jenis bencana untuk kejadian BNPB dan laporan
+  warga, gelombang untuk sungai, segitiga berasap untuk gunung api.
+- Sesar dan megathrust: 17 potongan zona subduksi dirangkai jadi 6 garis bergigi yang mengalir; klik garisnya dan
+  garis itu sendiri yang menyala. Jejak GEM yang kembar dengan megathrust dibuang.
+- Peta bahaya InaRISK jadi satu gambar per jenis dengan palet sendiri, muncul dan hilang dengan memudar. Pilihan
+  jenisnya jadi tombol, lengkap dengan legenda rendah-sedang-tinggi.
+- Sesar & megathrust ikut nyala sejak awal.
+
+### Ditambahkan
+
+- Tooltip saat kursor di atas objek peta, riak di gempa 24 jam terakhir, bidikan berdenyut di objek terpilih.
+- Tahap `inarisk` di `scripts/bangun_data.py`.
+
+### Diperbaiki
+
+- Rumah sakit cuma tampil di Sumatra dan Jawa bagian barat (jawaban Overpass terpotong): sekarang 3.567 rumah sakit
+  se-Indonesia dari ekspor HOT.
+- Partikel angin dibersihkan lalu ditabur ulang tiap kali peta bergerak, termasuk waktu tombol "Kembali ke
+  Indonesia" ditekan.
+
+### Dihapus
+
+- Proxy ubin `/api/inarisk`.
+
 ## [1.0.0] - 2026-11-15
 
 Rilis pertama.

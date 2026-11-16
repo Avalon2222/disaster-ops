@@ -24,6 +24,11 @@
   <img src="docs/screenshots/guncangan.png" width="49%" alt="Skenario guncangan Sesar Lembang M6,8: 24 juta orang di MMI VI ke atas" />
   <img src="docs/screenshots/replay.png" width="49%" alt="Putar ulang karhutla 2019 hari demi hari" />
 </p>
+<p align="center">
+  <img src="docs/screenshots/hujan.png" width="32%" alt="Prakiraan hujan: rintik jatuh di tempat hujannya, angin tetap mengalir" />
+  <img src="docs/screenshots/megathrust.png" width="32%" alt="Klik garis megathrust: garisnya menyala dan bisa langsung dijadikan skenario" />
+  <img src="docs/screenshots/bahaya.png" width="32%" alt="Peta bahaya longsor InaRISK di Jawa" />
+</p>
 
 ## 🇬🇧 In English
 
@@ -78,10 +83,10 @@ ditanya *"kalau terjadi di sini, gimana?"*.
 | E | Arah asap: lintasan 48 jam dari gugus titik panas | prakiraan | FIRMS + angin 850 hPa |
 | B | Risiko banjir dari hujan 3 hari terbasah | prakiraan 8 hari | Open-Meteo |
 | V | Debit 22 sungai dibanding klimatologi 1991-2020 | prakiraan 8 hari | GloFAS lewat Open-Meteo |
-| Z | 322 sesar aktif, 17 segmen megathrust, 1.829 gempa M6+ sejak 1900 | statis | GEM, Bird (2003), USGS |
+| Z | 154 sesar aktif, 6 garis megathrust (klik garisnya, garisnya yang menyala), 1.829 gempa M6+ sejak 1900 | statis | GEM, Bird (2003), USGS |
 | X | Peta bahaya InaRISK: gempa, tsunami, banjir, longsor, karhutla, gunung api | statis | BNPB |
 | N | Kepadatan penduduk, sel 5 km | statis | WorldPop 2020 |
-| H | 1.285 rumah sakit | statis | OpenStreetMap |
+| H | 3.567 rumah sakit | statis | OpenStreetMap (ekspor HOT) |
 
 Rincian sumber, lisensi, dan batasan tiap lapisan ada di [`data/SUMBER_DATA.md`](data/SUMBER_DATA.md).
 
@@ -127,19 +132,24 @@ BMKG InaTEWS + USGS   ──app/api/gempa───────▶ browser, tiap 
 MAGMA (HTML)          ──app/api/gunung──────▶ browser, tiap 30 menit
 BNPB + PetaBencana    ──app/api/bencana─────▶ browser, tiap 15 menit
 BMKG nowcast (CAP)    ──app/api/peringatan──▶ browser, tiap 5 menit
-BNPB InaRISK          ──app/api/inarisk─────▶ ubin peta bahaya (proxy, disimpan CDN sebulan)
 Open-Meteo            ──scripts/bangun_cuaca.ts──▶ cabang `data`/cuaca.json   (tiap 6 jam, GitHub Actions)
-ETOPO, WorldPop, OSM, GEM, FIRMS 2019 ──scripts/bangun_data.py──▶ public/data  (sekali, hasilnya di-commit)
+ETOPO, WorldPop, OSM, GEM, FIRMS 2019, InaRISK ──scripts/bangun_data.py──▶ public/data  (sekali, hasilnya di-commit)
 ```
 
 - **Globe & lapisan.** MapLibre GL dengan proyeksi globe, basemap vektor gelap dari OpenFreeMap (tanpa kunci API).
   Tiap lapisan data adalah source GeoJSON + layer WebGL, jadi belasan ribu titik panas tetap mulus.
-- **Angin dan asap.** Partikel hidup di koordinat lon/lat dan digambar di kanvas 2D di atas peta
-  (`src/lib/peta/angin.ts`), diproyeksikan tiap frame dengan matriks globe MapLibre. Kecepatan di layar dibuat tidak
-  bergantung zoom; menjelang tepi grid partikel menipis supaya gak terpotong tajam. Asap dilepas dari gugus titik panas
-  dan dihanyutkan angin 850 hPa yang berubah mengikuti prakiraan.
-- **Lapisan medan.** Hujan, suhu, PM2.5, FWI, risiko banjir, dan penduduk digambar ke kanvas kecil lalu dipakai
-  MapLibre sebagai source `canvas`. Baris kanvas dihitung di ruang Mercator supaya gak bergeser dari garis pantai.
+- **Angin, hujan, kabut, asap.** Semua yang bergerak hidup di koordinat lon/lat dan digambar di satu kanvas 2D di
+  atas peta (`src/lib/peta/efek.ts`), diproyeksikan ulang tiap frame dengan matriks globe MapLibre. Kanvasnya
+  dibersihkan tiap frame dan jejak angin disimpan sebagai riwayat posisi, jadi gak ada yang hilang atau tertinggal
+  waktu peta digeser atau di-zoom. Kecepatan di layar gak bergantung zoom, dan menjelang tepi grid partikel menipis
+  membulat supaya batasnya gak kelihatan kotak. Hujan jatuh sebagai rintik di tempat prakiraannya, PM2.5 jadi kabut
+  yang hanyut, asap dilepas dari gugus titik panas dan dihanyutkan angin 850 hPa.
+- **Lapisan medan.** Hujan, suhu, PM2.5, FWI, risiko banjir, dan penduduk digambar ke kanvas lepas, dihaluskan, lalu
+  dipasang ke source `image` MapLibre. Baris gambar dihitung di ruang Mercator supaya gak bergeser dari garis pantai.
+  Nyala dan matinya lewat opasitas, jadi memudar, bukan kedip.
+- **Peta bahaya InaRISK.** Indeks bahaya BNPB (0-1) diunduh sekali lewat `scripts/bangun_data.py`, diwarnai dengan
+  palet sendiri (`src/lib/peta/palet_inarisk.json`), dan disimpan jadi satu gambar WebP per jenis. Browser cukup
+  mengunduh satu gambar lalu memudarkannya masuk, gak lagi menunggu ubin satu-satu dari server BNPB.
   FWI, banjir, dan penduduk disisipkan di bawah lapisan laut, jadi otomatis terpotong rapi di pantai.
 - **Fire Weather Index.** `src/lib/model/fwi.ts` adalah implementasi penuh sistem FWI Kanada (FFMC, DMC, DC, ISI, BUI,
   FWI) dengan faktor panjang hari khatulistiwa. Dihitung berurutan dari 30 hari riwayat supaya kode kekeringannya
@@ -184,8 +194,8 @@ python scripts/kalibrasi_sungai.py  # cari ulang sel GloFAS untuk 22 sungai + kl
 ### Tes
 
 ```bash
-npm test                            # Vitest: 117 tes untuk model, parser tiap sumber, kamus, dan data yang di-deploy
-npm run build && npm run test:e2e   # Playwright: 12 skenario di 360, 390, 412, dan 1440 px + 6 tes server
+npm test                            # Vitest: 134 tes untuk model, parser tiap sumber, kamus, dan data yang di-deploy
+npm run build && npm run test:e2e   # Playwright: 18 skenario di 360, 390, 412, dan 1440 px + 6 tes server
 ```
 
 Tes unit membaca data asli di `public/data`, jadi angka seperti "24 juta orang di MMI VI ke atas untuk Sesar Lembang"
@@ -207,7 +217,8 @@ bergantung pada kejadian hari itu. Keduanya jalan di CI pada setiap push.
 - **Skenario guncangan mengabaikan jenis tanah.** Tanah lunak bisa menaikkan intensitas 1-2 tingkat MMI.
 - **Rekap BNPB ditaruh di ibu kota kabupaten**, bukan lokasi persis kejadian. Laporan PetaBencana belum tentu
   terverifikasi.
-- **Rumah sakit dari OpenStreetMap belum lengkap.** Rute memakai server demo OSRM tanpa jaminan layanan.
+- **Rumah sakit dari OpenStreetMap, selengkap yang dipetakan relawan.** Rute memakai server demo OSRM tanpa jaminan
+  layanan.
 - **Level gunung api dibaca dari halaman MAGMA.** Kalau MAGMA gak terjangkau, level ditampilkan "tidak diketahui"
   alih-alih angka basi.
 
