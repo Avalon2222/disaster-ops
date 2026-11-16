@@ -162,9 +162,13 @@ test("lapisan prakiraan: FWI menyalakan legenda dan lini masa harian, lapisan me
 
 test("klik peta kosong membuka prakiraan titik, Esc menutup", async ({ page }) => {
   await bukaKonsol(page);
-  const ukuran = page.viewportSize()!;
-  // tengah layar = laut/daratan Indonesia tengah, jauh dari data uji
-  await page.mouse.click(ukuran.width * 0.62, ukuran.height * 0.42);
+  // Laut Jawa di tengah layar: tidak ada sesar, megathrust, atau data uji di situ, dan di zoom ini gempa historis
+  // belum bisa diklik
+  await page.evaluate(() => (window as unknown as { __dops: { jumpTo(o: object): void } }).__dops.jumpTo({ center: [112.2, -5.1], zoom: 4.6 }));
+  await page.waitForFunction(() => !(window as unknown as { __dops: { isMoving(): boolean } }).__dops.isMoving());
+  await page.waitForTimeout(500);
+  const kotak = (await page.locator("canvas.maplibregl-canvas").boundingBox())!;
+  await page.mouse.click(kotak.x + kotak.width / 2, kotak.y + kotak.height / 2);
   const panel = page.getByTestId("panel-detail");
   await expect(panel).toBeVisible();
   await expect(panel).toContainText("Titik di peta");

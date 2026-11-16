@@ -154,6 +154,9 @@ test("klik garis megathrust: garisnya yang menyala, bukan lingkaran", async ({ p
   await bukaKonsol(page);
   // cari titik di garis megathrust yang tidak tertutup objek lain, di bagian layar yang bebas panel
   await page.evaluate(() => (window as unknown as { __dops: PetaUji }).__dops.jumpTo({ center: [101, -6.2], zoom: 6 }));
+  // beri peta waktu menggambar tampilan baru, supaya tidak ada objek yang baru muncul di antara "cari titik" dan "klik"
+  await page.waitForFunction(() => !(window as unknown as { __dops: PetaUji }).__dops.isMoving());
+  await page.waitForTimeout(2500);
   const titik = await page.evaluate(async () => {
     const m = (window as unknown as { __dops: PetaUji }).__dops;
     const g = (await (await fetch("/data/sesar.geojson")).json()) as { features: { properties: { jenis: string }; geometry: { coordinates: [number, number][] } }[] };
