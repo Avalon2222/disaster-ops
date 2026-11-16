@@ -84,7 +84,6 @@ export async function pasangDataPalsu(page: Page) {
   await page.route("**/api/gunung", (r) => r.fulfill({ json: d.gunung }));
   await page.route("**/api/bencana", (r) => r.fulfill({ json: d.bencana }));
   await page.route("**/api/peringatan", (r) => r.fulfill({ json: d.peringatan }));
-  await page.route("**/api/inarisk/**", (r) => r.fulfill({ contentType: "image/png", body: PNG_KOSONG }));
   const cuaca = cuacaSegar();
   await page.route("https://raw.githubusercontent.com/**", (r) => r.fulfill({ contentType: "application/json", body: cuaca, headers: { "access-control-allow-origin": "*" } }));
   await page.route("https://router.project-osrm.org/**", (r) =>

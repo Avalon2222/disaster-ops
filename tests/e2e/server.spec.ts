@@ -4,7 +4,7 @@ test.describe("server", () => {
   test.skip(({ viewport }) => (viewport?.width ?? 0) < 1000, "cukup dijalankan sekali");
 
   test("header keamanan terpasang di halaman, API, dan data", async ({ request }) => {
-    for (const jalur of ["/", "/api/inarisk/x?bbox=1", "/data/kota.json"]) {
+    for (const jalur of ["/", "/api/gunung", "/data/kota.json", "/data/inarisk/gempa.webp"]) {
       const h = (await request.get(jalur)).headers();
       expect(h["content-security-policy"], jalur).toContain("default-src 'self'");
       expect(h["content-security-policy"], jalur).toContain("frame-ancestors 'self'");
@@ -14,12 +14,16 @@ test.describe("server", () => {
     }
   });
 
-  test("proxy InaRISK menolak permintaan yang tidak sah", async ({ request }) => {
-    for (const jalur of ["/api/inarisk/gempa", "/api/inarisk/gempa?bbox=a,b,c,d", "/api/inarisk/rahasia?bbox=1,2,3,4", "/api/inarisk/gempa?bbox=1,2,3"]) {
-      const res = await request.get(jalur);
-      expect(res.status(), jalur).toBe(400);
-      expect(await res.json(), jalur).toEqual({ galat: "bad_request" });
+  test("peta bahaya InaRISK disajikan sebagai gambar statis yang boleh disimpan peramban", async ({ request }) => {
+    for (const jenis of ["gempa", "tsunami", "banjir", "longsor", "karhutla", "gunungapi"]) {
+      const res = await request.get(`/data/inarisk/${jenis}.webp`);
+      expect(res.status(), jenis).toBe(200);
+      expect(res.headers()["content-type"], jenis).toBe("image/webp");
+      expect(res.headers()["cache-control"], jenis).toContain("max-age=3600");
+      expect((await res.body()).length, jenis).toBeGreaterThan(20_000);
     }
+    // proxy ubin yang lama sudah tidak ada
+    expect((await request.get("/api/inarisk/gempa?bbox=1,2,3,4")).status()).toBe(404);
   });
 
   test("galat API cuma berupa kode", async ({ request }) => {

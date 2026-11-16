@@ -23,6 +23,9 @@ export default defineConfig({
     browserName: "chromium",
     channel: process.env.E2E_KANAL || undefined,
     locale: "id-ID",
+    // animasi garis megathrust membuat peta digambar ulang terus; di SwiftShader itu mahal, jadi tes berjalan
+    // dengan "kurangi gerakan" (tes yang memeriksa animasinya menyalakannya lagi sendiri)
+    reducedMotion: "reduce",
     // peta butuh WebGL; di mesin tanpa GPU pakai SwiftShader
     launchOptions: { args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] },
   },

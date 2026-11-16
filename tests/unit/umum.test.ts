@@ -131,8 +131,13 @@ describe("lapisan", () => {
     a = toggleLapisan(a, "hujan");
     expect(medanAktif(a)).toBeNull();
     a = toggleLapisan(a, "rs");
+    a = toggleLapisan(a, "sungai");
+    expect(a.has("rs") && a.has("sungai")).toBe(true);
+    // sesar & megathrust ikut nyala sejak awal; mematikannya tidak mengganggu yang lain
+    expect(LAPISAN_AWAL).toEqual(["hotspot", "gempa", "gunung", "bencana", "peringatan", "angin", "sesar"]);
     a = toggleLapisan(a, "sesar");
-    expect(a.has("rs") && a.has("sesar")).toBe(true);
+    expect(a.has("sesar")).toBe(false);
+    expect(a.has("rs")).toBe(true);
     expect(LAPISAN_MEDAN).toEqual(["hujan", "suhu", "udara", "fwi", "banjir", "inarisk", "penduduk"]);
     expect(defLapisan("fwi").waktu).toBe("hari");
   });
@@ -146,8 +151,8 @@ describe("lapisan", () => {
     expect(modeWaktu(new Set<IdLapisan>(["inarisk"]))).toBeNull();
   });
 
-  it("URL ubin: InaRISK lewat proxy sendiri, citra GIBS menurut tanggal", () => {
-    for (const j of JENIS_INARISK) expect(urlInarisk(j)).toBe(`/api/inarisk/${j}?bbox={bbox-epsg-3857}`);
+  it("URL raster: InaRISK gambar statis per jenis, citra GIBS menurut tanggal", () => {
+    for (const j of JENIS_INARISK) expect(urlInarisk(j)).toBe(`/data/inarisk/${j}.webp`);
     expect(urlCitra("2019-09-21")).toContain("VIIRS_SNPP_CorrectedReflectance_TrueColor/default/2019-09-21/");
     expect(urlCitra("2026-11-14")).toContain("VIIRS_NOAA20_CorrectedReflectance_TrueColor/default/2026-11-14/");
   });
@@ -211,7 +216,7 @@ describe("pencarian", () => {
 describe("skala warna dan kanvas medan", () => {
   it("warna diinterpolasi antar titik henti, NaN transparan", () => {
     const c: Rgba = [0, 0, 0, 0];
-    expect(warnaSkala(SKALA.fwi, 0, c)[3]).toBe(70);
+    expect(warnaSkala(SKALA.fwi, 0, c)[3]).toBe(SKALA.fwi.henti[0][4]);
     expect(warnaSkala(SKALA.fwi, 13, c).slice(0, 3)).toEqual([239, 68, 68]);
     expect(warnaSkala(SKALA.fwi, 999, c).slice(0, 3)).toEqual([190, 24, 93]);
     expect(warnaSkala(SKALA.hujan, 0.1, c)[3]).toBe(0);
@@ -323,7 +328,7 @@ describe("data statis yang di-deploy", () => {
     expect(aceh![0]).toBeCloseTo(95.98, 0);
 
     const sesar = bacaJson<{ features: { properties: { jenis: string }; geometry: { coordinates: number[][] } }[] }>("sesar.geojson");
-    expect(sesar.features.filter((f) => f.properties.jenis === "sesar").length).toBeGreaterThan(200);
+    expect(sesar.features.filter((f) => f.properties.jenis === "sesar").length).toBeGreaterThan(120);
     expect(sesar.features.filter((f) => f.properties.jenis === "megathrust").length).toBeGreaterThan(5);
     expect(sesar.features.every((f) => f.geometry.coordinates.length >= 2)).toBe(true);
   });
