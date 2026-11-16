@@ -18,6 +18,9 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/id-ID/1.1.0/), ve
 - Peta bahaya InaRISK jadi satu gambar per jenis dengan palet sendiri, muncul dan hilang dengan memudar. Pilihan
   jenisnya jadi tombol, lengkap dengan legenda rendah-sedang-tinggi.
 - Sesar & megathrust ikut nyala sejak awal.
+- Gerak partikel dihitung dari waktu, bukan jumlah frame: lajunya sama di layar 30, 60, maupun 120 Hz, dan jumlah
+  partikel turun sendiri kalau perangkatnya keteteran.
+- Gempa historis baru bisa diklik setelah peta didekati (zoom 5 ke atas), supaya ketukan di tempat kosong gak nyasar.
 
 ### Ditambahkan
 

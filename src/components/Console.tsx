@@ -536,7 +536,10 @@ export default function Console() {
   /** Objek teratas di sekitar satu titik layar (urutan prioritas URUTAN_KLIK), atau null. */
   const cariPilihan = useCallback(
     (m: MapLibre, titikLayar: { x: number; y: number }, r: number, lon: number, lat: number): Pilihan | null => {
-      const ids = URUTAN_KLIK.filter((id) => m.getLayer(id) && m.getLayoutProperty(id, "visibility") !== "none");
+      // gempa historis di zoom jauh cuma tekstur halus (ribuan titik kecil): baru bisa diklik setelah didekati,
+      // supaya ketukan di "tempat kosong" tidak nyasar ke gempa tahun 1900-an
+      const jauh = m.getZoom() < 5;
+      const ids = URUTAN_KLIK.filter((id) => m.getLayer(id) && m.getLayoutProperty(id, "visibility") !== "none" && !(jauh && id === "historis-titik"));
       const kotak: [PointLike, PointLike] = [
         [titikLayar.x - r, titikLayar.y - r],
         [titikLayar.x + r, titikLayar.y + r],

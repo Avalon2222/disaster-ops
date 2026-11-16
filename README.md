@@ -195,7 +195,7 @@ python scripts/kalibrasi_sungai.py  # cari ulang sel GloFAS untuk 22 sungai + kl
 
 ```bash
 npm test                            # Vitest: 134 tes untuk model, parser tiap sumber, kamus, dan data yang di-deploy
-npm run build && npm run test:e2e   # Playwright: 18 skenario di 360, 390, 412, dan 1440 px + 6 tes server
+npm run build && npm run test:e2e   # Playwright: 12 skenario di 360, 390, 412, dan 1440 px, 6 skenario peta, 6 tes server
 ```
 
 Tes unit membaca data asli di `public/data`, jadi angka seperti "24 juta orang di MMI VI ke atas untuk Sesar Lembang"

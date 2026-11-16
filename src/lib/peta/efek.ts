@@ -17,9 +17,11 @@ import { anginDi, type GugusApi, type MedanAngin } from "../model/asap";
 import { sampel } from "../model/grid";
 import { buatProyektor, proyeksi, titikKosong, type Proyektor } from "./proyeksi";
 
-/** panjang jejak angin: jumlah posisi yang diingat, dicatat tiap SELANG_JEJAK frame (kepala selalu posisi terkini) */
+/** panjang jejak angin: jumlah posisi yang diingat, dicatat tiap SELANG_JEJAK_MS (kepala selalu posisi terkini) */
 const JEJAK = 10;
-const SELANG_JEJAK = 3;
+const SELANG_JEJAK_MS = 48;
+/** satu "langkah" = satu frame di layar 60 Hz; semua gerak dikali langkah supaya lajunya sama di 30, 60, maupun 120 Hz */
+const MS_PER_LANGKAH = 1000 / 60;
 /** warna jejak per kelas kecepatan: < 3, 3-6, 6-10, > 10 m/s */
 const WARNA_LAJU = ["125,211,252", "186,230,253", "255,255,255", "255,200,87"];
 const ALFA_LAJU = [0.42, 0.6, 0.8, 0.95];
@@ -215,9 +217,35 @@ export class KanvasEfek {
     });
   }
 
+  private kiniLalu = 0;
+  /** langkah frame ini (1 = 16,7 ms), dibatasi supaya jeda panjang tidak melempar partikel jauh-jauh */
+  private langkah = 1;
+  private catat = false;
+  private sejakCatat = 0;
+  /** rata-rata selang antar frame (ms) dan porsi partikel yang digambar: turun sendiri kalau perangkatnya keteteran */
+  private selangRata = MS_PER_LANGKAH;
+  private mutu = 1;
+  private frameSejakAtur = 0;
+
+  private aturMutu(dt: number) {
+    this.selangRata += (dt - this.selangRata) * 0.08;
+    if (++this.frameSejakAtur < 40) return;
+    this.frameSejakAtur = 0;
+    if (this.selangRata > 40 && this.mutu > 0.2) this.mutu = Math.max(0.2, this.mutu * 0.7);
+    else if (this.selangRata < 22 && this.mutu < 1) this.mutu = Math.min(1, this.mutu * 1.2);
+  }
+
   private frame = (kini: number) => {
     this.raf = requestAnimationFrame(this.frame);
     if (document.hidden) return;
+    const dt = this.kiniLalu ? kini - this.kiniLalu : MS_PER_LANGKAH;
+    this.kiniLalu = kini;
+    // jeda lebih dari sedetik = tab baru kembali atau peta baru selesai memuat: bukan ukuran kemampuan perangkat
+    if (dt < 1000) this.aturMutu(dt);
+    this.langkah = Math.min(3, Math.max(0.25, dt / MS_PER_LANGKAH));
+    this.sejakCatat += dt;
+    this.catat = this.sejakCatat >= SELANG_JEJAK_MS;
+    if (this.catat) this.sejakCatat = 0;
     const g = this.grid;
     const adaAngin = !this.jeda && this.anginAktif && g && this.u && this.v;
     const adaHujan = !this.jeda && this.hujanAktif && g && this.hujan;
@@ -260,7 +288,6 @@ export class KanvasEfek {
     p.n = 0;
   }
 
-  private hitung = 0;
   private kotakAcuan: [number, number, number, number] | null = null;
 
   /**
@@ -291,32 +318,36 @@ export class KanvasEfek {
   private gambarAngin(pr: Proyektor, kotak: [number, number, number, number]) {
     const ctx = this.ctx;
     const g = this.grid!;
-    this.hitung++;
+    const langkah = this.langkah;
+    const jumlah = Math.max(1, Math.round(this.angin.length * this.mutu));
     // kecepatan layar tidak bergantung zoom, dan dimampatkan supaya angin tenang pun kelihatan mengalir:
     // 1 m/s ~ 0,45 piksel per frame, 10 m/s ~ 1,5
     const pikselPerDerajat = (512 * 2 ** this.map.getZoom()) / 360;
     this.sebarUlang(kotak);
     const X = this.layarX;
     const Y = this.layarY;
-    for (let i = 0; i < this.angin.length; i++) {
+    for (let i = 0; i < jumlah; i++) {
       const p = this.angin[i];
       const u = sampel(g, this.u!, p.lon, p.lat) / 10;
       const v = sampel(g, this.v!, p.lon, p.lat) / 10;
       const diLuar = p.lon < kotak[0] || p.lon > kotak[2] || p.lat < kotak[1] || p.lat > kotak[3];
-      if (p.maks < 0 || p.umur++ > p.maks || Number.isNaN(u) || diLuar || (p.umur % 9 === 0 && Math.random() > pudarTepi(g, p.lon, p.lat) + 0.15)) {
+      p.umur += langkah;
+      // kira-kira tiap 9 langkah: partikel di dekat tepi grid berpeluang mati, supaya kerapatannya memudar ke tepi
+      const ujiTepi = Math.random() < langkah / 9 && Math.random() > pudarTepi(g, p.lon, p.lat) + 0.15;
+      if (p.maks < 0 || p.umur > p.maks || Number.isNaN(u) || diLuar || ujiTepi) {
         this.lahirAngin(p, kotak);
         // umur awal diacak supaya partikel tidak lahir dan mati serempak
         if (p.maks > 0 && p.umur === 0) p.umur = Math.random() * 20;
       } else {
         const laju = Math.hypot(u, v);
-        const k = (0.34 + 0.116 * laju) / (Math.max(0.3, laju) * pikselPerDerajat);
+        const k = ((0.34 + 0.116 * laju) * langkah) / (Math.max(0.3, laju) * pikselPerDerajat);
         p.lon += (u * k) / Math.max(0.2, Math.cos((p.lat * Math.PI) / 180));
         p.lat += v * k;
         p.kelas = laju < 3 ? 0 : laju < 6 ? 1 : laju < 10 ? 2 : 3;
       }
-      // riwayat posisi: entri terakhir = kepala (selalu posisi terkini); entri baru ditambah tiap SELANG_JEJAK frame
+      // riwayat posisi: entri terakhir = kepala (selalu posisi terkini); entri baru ditambah tiap SELANG_JEJAK_MS
       const j = p.jejak;
-      if (p.n === 0 || this.hitung % SELANG_JEJAK === 0) {
+      if (p.n === 0 || this.catat) {
         if (p.n === JEJAK) {
           j.copyWithin(0, 2);
           p.n--;
@@ -341,7 +372,7 @@ export class KanvasEfek {
       for (let kelas = 0; kelas < 4; kelas++) {
         ctx.beginPath();
         let ada = false;
-        for (let i = 0; i < this.angin.length; i++) {
+        for (let i = 0; i < jumlah; i++) {
           const p = this.angin[i];
           if (p.kelas !== kelas || p.n < 2) continue;
           const dasar = i * JEJAK;
@@ -374,8 +405,11 @@ export class KanvasEfek {
     ctx.lineCap = "round";
     const ringan: number[] = [];
     const deras: number[] = [];
-    for (const r of this.rintik) {
-      if (r.maks < 0 || r.umur++ > r.maks) {
+    const jumlahRintik = Math.max(1, Math.round(this.rintik.length * this.mutu));
+    for (let ke = 0; ke < jumlahRintik; ke++) {
+      const r = this.rintik[ke];
+      r.umur += this.langkah;
+      if (r.maks < 0 || r.umur > r.maks) {
         // lahir di tempat yang memang hujan: makin deras makin besar peluangnya
         r.maks = -1;
         for (let coba = 0; coba < 3; coba++) {
@@ -394,7 +428,7 @@ export class KanvasEfek {
         if (r.maks < 0) continue;
       }
       if (!proyeksi(pr, r.lon, r.lat, 0, this.a) || !this.a.terlihat) continue;
-      const f = r.umur / r.maks;
+      const f = Math.min(1, r.umur / r.maks);
       const daftar = r.kuat > 0.45 ? deras : ringan;
       if (f < 0.8) {
         // rintik jatuh miring dari atas menuju titiknya
@@ -435,9 +469,12 @@ export class KanvasEfek {
     const ctx = this.ctx;
     const g = this.grid!;
     const pikselPerDerajat = (512 * 2 ** this.map.getZoom()) / 360;
-    const k = 0.05 / pikselPerDerajat;
-    for (const p of this.kabut) {
-      if (p.maks < 0 || p.umur++ > p.maks) {
+    const k = (0.05 * this.langkah) / pikselPerDerajat;
+    const jumlahKabut = Math.max(1, Math.round(this.kabut.length * this.mutu));
+    for (let ke = 0; ke < jumlahKabut; ke++) {
+      const p = this.kabut[ke];
+      p.umur += this.langkah;
+      if (p.maks < 0 || p.umur > p.maks) {
         p.maks = -1;
         for (let coba = 0; coba < 3; coba++) {
           const lon = kotak[0] + Math.random() * (kotak[2] - kotak[0]);
@@ -462,7 +499,7 @@ export class KanvasEfek {
       p.lon += (u * k) / Math.max(0.2, Math.cos((p.lat * Math.PI) / 180));
       p.lat += v * k;
       if (!proyeksi(pr, p.lon, p.lat, 0, this.a) || !this.a.terlihat) continue;
-      const f = p.umur / p.maks;
+      const f = Math.min(1, p.umur / p.maks);
       const pm = sampel(g, this.pm25!, p.lon, p.lat);
       // muncul pelan, hilang pelan; makin kotor udaranya makin pekat
       ctx.globalAlpha = Math.sin(Math.PI * f) * Math.min(0.24, 0.05 + pm / 480);
@@ -477,17 +514,20 @@ export class KanvasEfek {
   private gambarAsap(pr: Proyektor) {
     const ctx = this.ctx;
     const m = this.medanAsap!;
-    const dt = MENIT_PER_FRAME * 60;
-    for (const p of this.asap) {
+    const dt = MENIT_PER_FRAME * 60 * this.langkah;
+    // asap tersusun per sumber, jadi tidak dipangkas mutu: memotong ujungnya berarti menghapus sumber terakhir
+    for (let ke = 0; ke < this.asap.length; ke++) {
+      const p = this.asap[ke];
       const sumber = this.gugus[p.sumber];
       if (!sumber) continue;
-      if (p.umur++ > p.maks) {
+      p.umur += this.langkah;
+      if (p.umur > p.maks) {
         p.lon = sumber.lon + (Math.random() - 0.5) * 0.25;
         p.lat = sumber.lat + (Math.random() - 0.5) * 0.25;
         p.umur = 0;
         continue;
       }
-      const [u, v] = anginDi(m, p.lon, p.lat, this.waktuAsap + p.umur * dt * 1000);
+      const [u, v] = anginDi(m, p.lon, p.lat, this.waktuAsap + p.umur * MENIT_PER_FRAME * 60_000);
       if (Number.isNaN(u) || Number.isNaN(v)) {
         p.umur = p.maks + 1;
         continue;
@@ -496,7 +536,7 @@ export class KanvasEfek {
       p.lon += (u * dt) / (111_195 * Math.max(0.2, Math.cos((p.lat * Math.PI) / 180))) + (Math.random() - 0.5) * 0.012;
       p.lat += (v * dt) / 111_195 + (Math.random() - 0.5) * 0.012;
       if (!proyeksi(pr, p.lon, p.lat, 0, this.a) || !this.a.terlihat) continue;
-      const f = p.umur / p.maks;
+      const f = Math.min(1, p.umur / p.maks);
       ctx.globalAlpha = 0.3 * (1 - f) + 0.03;
       const ukuran = 9 + f * 30;
       ctx.drawImage(this.kuasAsap, this.a.x - ukuran / 2, this.a.y - ukuran / 2, ukuran, ukuran);
